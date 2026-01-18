@@ -52,7 +52,7 @@ export function DataTable<TData, TValue>({
             ))
           ) : (
             <TableRow>
-              <TableCell colSpan={columns.length} className="h-19 text-muted-foreground text-center">
+              <TableCell colSpan={columns.length} className="h-20 text-muted-foreground text-center">
                 No results.
               </TableCell>
             </TableRow>
