@@ -11,8 +11,17 @@ import { getQueryClient, trpc } from "@/trpc/server";
 import { ErrorBoundary } from "react-error-boundary";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { Suspense } from "react";
+import { SearchParams } from "nuqs";
+import { loadSearchParams } from "@/modules/agents/params";
 
-const Page = async () => {
+interface Props {
+  searchParams: Promise<SearchParams>;
+}
+
+const Page = async ({searchParams}: Props) => {
+
+  const filters = await loadSearchParams(searchParams)
+
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -22,7 +31,9 @@ const Page = async () => {
   }
 
   const queryClient = getQueryClient();
-  void queryClient.prefetchQuery(trpc.agent.getMany.queryOptions());
+  void queryClient.prefetchQuery(trpc.agent.getMany.queryOptions({
+    ...filters,
+  }));
 
   return (
     <>
