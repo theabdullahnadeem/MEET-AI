@@ -23,14 +23,16 @@ export const agentRouter = createTRPCRouter({
           ...getTableColumns(agents),
         })
         .from(agents)
-        .where(and(eq(agents.id, input.id), eq(agents.userId, ctx.auth.user.id)));
+        .where(
+          and(eq(agents.id, input.id), eq(agents.userId, ctx.auth.user.id)),
+        );
 
-        if(!existingAgent){
-            throw new TRPCError({
-                code: "NOT_FOUND",
-                message: "Agent not found",
-            })
-        }
+      if (!existingAgent) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Agent not found",
+        });
+      }
 
       return existingAgent;
     }),
@@ -66,25 +68,25 @@ export const agentRouter = createTRPCRouter({
         .limit(pageSize)
         .offset((page - 1) * pageSize);
 
-        const [total] = await db
+      const [total] = await db
         .select({
-            count: count()
+          count: count(),
         })
         .from(agents)
         .where(
-            and(
-                eq(agents.userId, ctx.auth.user.id),
-                search ? ilike(agents.name, `%${search}%`) : undefined,
-            )
+          and(
+            eq(agents.userId, ctx.auth.user.id),
+            search ? ilike(agents.name, `%${search}%`) : undefined,
+          ),
         );
 
-        const totalPages = Math.ceil(total.count / pageSize);
+      const totalPages = Math.ceil(total.count / pageSize);
 
-        return {
-            items: data,
-            total: total.count,
-            totalPages
-        }
+      return {
+        items: data,
+        total: total.count,
+        totalPages,
+      };
     }),
   create: protectedProcedure
     .input(agentsInsertSchema)
