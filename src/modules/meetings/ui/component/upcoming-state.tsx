@@ -4,12 +4,12 @@ import Link from "next/link";
 import { VideoIcon, BanIcon } from "lucide-react";
 
 interface Props {
-    meeetingId: string;
+    meetingId: string;
     onCancelMeeting: () => void;
     isCancelling: boolean;
 }
 
-export const UpcomingState = ({meeetingId, onCancelMeeting, isCancelling}: Props) => {
+export const UpcomingState = ({meetingId, onCancelMeeting, isCancelling}: Props) => {
   return (
     <div className="bg-white rounded-lg px-4 py-5 flex flex-col gap-y-8 items-center justify-center">
       <EmptyState
@@ -23,7 +23,7 @@ export const UpcomingState = ({meeetingId, onCancelMeeting, isCancelling}: Props
           Cancel Meeting
         </Button>
         <Button asChild className="w-full lg:w-auto" disabled={isCancelling}>
-          <Link href={`/call/${meeetingId}`}>
+          <Link href={`/call/${meetingId}`}>
             <VideoIcon />
             Start Meeting
           </Link>
