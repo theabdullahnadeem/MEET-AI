@@ -1,3 +1,5 @@
+"use client";
+
 import { ResponsiveDialog } from "@/components/responsive-dialog";
 import { MeetingsForm } from "./meetings-form";
 import { MeetingGetOne } from "../../types";
