@@ -4,10 +4,10 @@ import { VideoIcon } from "lucide-react";
 import Link from "next/link";
 
 interface Props {
-    meeetingId: string;
+    meetingId: string;
 }
 
-export const ActiveState = ({meeetingId}: Props) => {
+export const ActiveState = ({meetingId}: Props) => {
   return (
     <div className="bg-white rounded-lg px-4 py-5 flex flex-col gap-y-8 items-center justify-center">
       <EmptyState
@@ -17,7 +17,7 @@ export const ActiveState = ({meeetingId}: Props) => {
       />
       <div>
         <Button asChild className="w-full lg:w-auto">
-            <Link href={`/call/${meeetingId}`}>
+            <Link href={`/call/${meetingId}`}>
                 <VideoIcon />
                 Join Meeting
             </Link>
