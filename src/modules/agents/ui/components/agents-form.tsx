@@ -21,6 +21,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Loader2Icon } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface AgentsFormProps {
   onSuccess?: () => void;
@@ -36,19 +37,20 @@ export const AgentsForm = ({
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
+  const router = useRouter();
   const createAgentMethod = useMutation(
     trpc.agent.create.mutationOptions({
       onSuccess: async () => {
         await queryClient.invalidateQueries(trpc.agent.getMany.queryOptions({}));
-
-        // TODO: Invalidate free tier usage
+        await queryClient.invalidateQueries(trpc.premium.getFreeUsage.queryOptions());
 
         onSuccess?.();
       },
       onError: (error) => {
         toast.error(error.message);
-
-        // TODO: Check if error code is "FORBIDDEN", redirect to /upgrade
+        if(error.data?.code === "FORBIDDEN") {
+          router.push("/upgrade");
+        }
       },
     })
   );
@@ -67,8 +69,6 @@ export const AgentsForm = ({
       },
       onError: (error) => {
         toast.error(error.message);
-
-        // TODO: Check if error code is "FORBIDDEN", redirect to /upgrade
       },
     })
   );
