@@ -40,6 +40,17 @@ export const MeetingIdView = ({ meetingId }: Props) => {
     "This action cannot be undone.",
   );
 
+  const cancelMutation = useMutation(
+  trpc.meeting.cancelMeeting.mutationOptions({
+    onSuccess: () => {
+      // Invalidate the meeting query to refetch updated data
+      queryClient.invalidateQueries({ queryKey: trpc.meeting.getOne.queryKey({ id: meetingId }) })
+      router.push("/meetings");
+      // Optionally show a toast notification
+    }
+  })
+)
+
   const removeMeeting = useMutation(
     trpc.meeting.remove.mutationOptions({
       onSuccess: async () => {
@@ -88,8 +99,8 @@ export const MeetingIdView = ({ meetingId }: Props) => {
         {isUpcoming && (
           <UpcomingState
             meetingId={meetingId} 
-            onCancelMeeting={() => {}}
-            isCancelling={false}
+            onCancelMeeting={()=> cancelMutation.mutate({id: meetingId})}
+            isCancelling={cancelMutation.isPending}
           />
         )}
       </div>

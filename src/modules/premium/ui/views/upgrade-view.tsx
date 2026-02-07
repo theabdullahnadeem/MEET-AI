@@ -51,8 +51,8 @@ export const UpgradeView = () => {
                             title={product.name}
                             price={
                                 product.prices[0].amountType === "fixed"
-                                ? product.prices[0].priceAmount / 100
-                                : 0
+                                ? (product.prices[0].priceAmount / 100).toString()
+                                : "0"
                             }
                             description={product.description}
                             priceSuffix={`/${product.prices[0].recurringInterval}`}
