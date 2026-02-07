@@ -19,6 +19,29 @@ import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
 
 export const meetingsRouter = createTRPCRouter({
+  cancelMeeting: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [canceledMeeting] = await db
+        .update(meetings)
+        .set({ status: MeetingStatus.CANCELLED })
+        .where(
+          and(
+            eq(meetings.id, input.id),
+            eq(meetings.userId, ctx.auth.user.id)
+          )
+        )
+        .returning();
+
+      if (!canceledMeeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      return canceledMeeting;
+    }),
   generateChatToken: protectedProcedure.mutation(async ({ctx}) => {
     const token = streamChat.createToken(ctx.auth.user.id)
     await streamChat.upsertUser({
