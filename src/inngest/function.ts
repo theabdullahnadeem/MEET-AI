@@ -1,8 +1,8 @@
 import { db } from "@/db";
-import { agents, meetings, user, speakerMappings } from "@/db/schema";
+import { agents, meetings, user } from "@/db/schema";
 import { inngest } from "@/inngest/client";
 import { StreamTrancriptItem } from "@/modules/meetings/types";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import JSONL from "jsonl-parse-stringify"
 
 import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
@@ -77,30 +77,6 @@ export const meetingsProcessing = inngest.createFunction(
           ));
 
         const speakers = [...userSpeakers, ...agentSpeakers];
-        const knownSpeakerIds = new Set(speakers.map(s => s.id));
-
-        // Build sequential fallback labels for unmapped speakers
-        const unmappedSpeakerLabels = new Map<string, string>();
-        let participantCounter = 0;
-
-        for (const id of speakerIds) {
-          if (!knownSpeakerIds.has(id)) {
-            participantCounter++;
-            unmappedSpeakerLabels.set(id, `Participant ${participantCounter}`);
-          }
-        }
-
-        // Persist unmapped speaker IDs to debug table for investigation
-        if (unmappedSpeakerLabels.size > 0) {
-          const mappingsToInsert = Array.from(unmappedSpeakerLabels.entries()).map(
-            ([speakerId, label]) => ({
-              meetingId: event.data.meetingId,
-              speakerId,
-              originalLabel: label,
-            })
-          );
-          await db.insert(speakerMappings).values(mappingsToInsert);
-        }
 
         return transcript.map((item) => {
           const speaker = speakers.find((speaker) => speaker.id === item.speaker_id);
@@ -108,7 +84,7 @@ export const meetingsProcessing = inngest.createFunction(
             return {
               ...item,
               user: {
-                name: unmappedSpeakerLabels.get(item.speaker_id) ?? "Unknown",
+                name: "Unknown",
               },
             };
           }
@@ -121,13 +97,6 @@ export const meetingsProcessing = inngest.createFunction(
         });
       });
 
-      // Calculate confidence: flag low if >30% of transcript lines are from unmapped speakers
-      const totalLines = transcript.length;
-      const unmappedLines = transcriptWithSpeakers.filter(
-        item => item.user.name.startsWith("Participant ") || item.user.name === "Unknown"
-      ).length;
-      const isLowConfidence = totalLines > 0 ? (unmappedLines / totalLines) > 0.3 : false;
-
       const { output } = await summarizer.run(
         "Summarize the following transcript:" + 
         JSON.stringify(transcriptWithSpeakers)
@@ -139,7 +108,6 @@ export const meetingsProcessing = inngest.createFunction(
         .set({
           summary:(output[0] as TextMessage).content as string,
           status: "completed",
-          lowConfidence: isLowConfidence,
         }) 
         .where(eq(meetings.id, event.data.meetingId))
       });

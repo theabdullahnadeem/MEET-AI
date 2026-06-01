@@ -348,4 +348,3 @@ export const meetingsRouter = createTRPCRouter({
       };
     }),
 });
-});

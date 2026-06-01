@@ -81,6 +81,7 @@ export const meetingStatus = pgEnum("meeting_status",
     "active",
     "completed",
     "processing",
+    "failed",
     "cancelled"
   ]
 )
