@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
     streamVideo.generateCallToken = (payload: any) => {
       return originalGenerateCallToken({
         ...payload,
-        iat: Math.floor(Date.now() / 1000) - 10,
+        iat: Math.floor(Date.now() / 1000) - 60,
       });
     };
 
