@@ -11,7 +11,8 @@ import {
   CornerDownRightIcon,
   ClockArrowUpIcon,
   ClockFadingIcon,
-  LoaderIcon
+  LoaderIcon,
+  AlertTriangleIcon
  } from "lucide-react";
 
 import { cn, formatDuration } from "@/lib/utils"; 
@@ -22,6 +23,7 @@ const statusIconMap = {
   active: LoaderIcon,
   processing: LoaderIcon,
   completed: CircleCheckIcon,
+  failed: AlertTriangleIcon,
   cancelled: CircleXIcon,
 }
 
@@ -30,6 +32,7 @@ const statusColorMap = {
   active: "bg-blue-500/20 text-blue-800 border-blue-800/5", 
   processing: "bg-gray-300/20 text-gray-800 border-gray-800/5",
   completed: "bg-emerald-500/20 text-emerald-800 border-emerald-800/5",
+  failed: "bg-red-500/20 text-red-800 border-red-800/5",
   cancelled: "bg-rose-500/20 text-rose-800 border-rose-800/5",
 }
 

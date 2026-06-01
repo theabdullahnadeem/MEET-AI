@@ -19,6 +19,7 @@ import { ActiveState } from "../component/active-state";
 import { CancelledState } from "../component/cancelled-state";
 import { ProcessingState } from "../component/processing-state";
 import { CompletedState } from "../component/completed-state";
+import { FailedState } from "../component/failed-state";
 
 interface Props {
   meetingId: string;
@@ -31,9 +32,13 @@ export const MeetingIdView = ({ meetingId }: Props) => {
   const [updateMeetingDialogOpen, setUpdateMeetingDialogOpen] = useState(false);
 
   const router = useRouter();
-  const { data } = useSuspenseQuery(
-    trpc.meeting.getOne.queryOptions({ id: meetingId }),
-  ) as { data: MeetingGetOne };
+  const { data } = useSuspenseQuery({
+    ...trpc.meeting.getOne.queryOptions({ id: meetingId }),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "processing" ? 10_000 : false;
+    },
+  }) as { data: MeetingGetOne };
 
   const [RemoveConfirmation, confirmRemove] = useConfirm(
     "Are you sure?",
@@ -76,6 +81,7 @@ export const MeetingIdView = ({ meetingId }: Props) => {
   const isCompleted = data.status === "completed";
   const isCancelled = data.status === "cancelled";
   const isProcessing = data.status === "processing";
+  const isFailed = data.status === "failed";
 
   return (
     <>
@@ -95,6 +101,7 @@ export const MeetingIdView = ({ meetingId }: Props) => {
         {isCancelled && <CancelledState />}
         {isCompleted && <CompletedState data={data} />}
         {isProcessing && <ProcessingState />}
+        {isFailed && <FailedState />}
         {isActive && <ActiveState meetingId={meetingId} />}
         {isUpcoming && (
           <UpcomingState

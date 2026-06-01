@@ -10,6 +10,7 @@ import {
   FileTextIcon,
   FileVideo2Icon,
   ClockFadingIcon,
+  AlertTriangleIcon,
 } from "lucide-react";
 import { GeneratedAvatar } from "@/components/generated-avatar";
 import { format } from "date-fns";
@@ -105,6 +106,17 @@ export const CompletedState = ({ data }: Props) => {
                         <ClockFadingIcon className="text-blue-700" />
                         {data.duration? formatDuration(data.duration): "No duration"}
                     </Badge>
+                    {data.lowConfidence && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-x-3">
+                        <AlertTriangleIcon className="size-5 text-amber-600 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-amber-800 font-medium text-sm">Low Speaker Attribution Confidence</p>
+                          <p className="text-amber-700 text-xs mt-1 leading-relaxed">
+                            Over 30% of transcript lines came from unrecognized participants. You can manually assign correct names in the <strong>Transcript</strong> tab to improve accuracy.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                     <div>
                         <Markdown components={{
                             h1: (props) => (
