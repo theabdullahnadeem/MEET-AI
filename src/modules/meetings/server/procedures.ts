@@ -235,6 +235,7 @@ export const meetingsRouter = createTRPCRouter({
     const token = streamVideo.generateUserToken({
       user_id: ctx.auth.user.id,
       exp: expirationTime,
+      iat: Math.floor(Date.now() / 1000) - 10, // Backdate by 10s to absorb Vercel↔Stream clock drift
     });
 
     return token;

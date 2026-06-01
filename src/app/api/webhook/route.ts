@@ -121,6 +121,18 @@ export async function POST(req: NextRequest) {
     }
 
 
+    // Backdate internal call tokens by 10s to absorb Vercel↔Stream clock drift.
+    // connectOpenAi() generates a call token internally; without this, Stream
+    // rejects it as "issued in the future" when server clocks diverge.
+    const originalGenerateCallToken =
+      streamVideo.generateCallToken.bind(streamVideo);
+    streamVideo.generateCallToken = (payload: any) => {
+      return originalGenerateCallToken({
+        ...payload,
+        iat: Math.floor(Date.now() / 1000) - 10,
+      });
+    };
+
     try {
       console.log("Connecting AI agent to call...");
 
