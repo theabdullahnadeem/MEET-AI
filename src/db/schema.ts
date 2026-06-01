@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import { pgTable, text, timestamp, boolean, index, pgEnum, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, index, pgEnum } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
 export const user = pgTable("user", {
@@ -81,7 +81,6 @@ export const meetingStatus = pgEnum("meeting_status",
     "active",
     "completed",
     "processing",
-    "failed",
     "cancelled"
   ]
 )
@@ -109,26 +108,11 @@ export const meetings = pgTable("meetings",{
   transcriptUrl:text("transcript_url"),
   recordingUrl:text("recording_url"),
   summary:text("summary"),
-  lowConfidence: boolean("low_confidence").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull().defaultNow(),
 })
-
-export const speakerMappings = pgTable("speaker_mappings",{
-  id: text("id").primaryKey().$default(()=>nanoid()),
-  meetingId: text("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
-  speakerId: text("speaker_id").notNull(),
-  originalLabel: text("original_label").notNull(),
-  customName: text("custom_name"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .$onUpdate(() => /* @__PURE__ */ new Date())
-    .notNull().defaultNow(),
-}, (table) => [
-  index("speaker_mappings_meeting_speaker_idx").on(table.meetingId, table.speakerId)
-])
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),

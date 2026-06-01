@@ -51,19 +51,6 @@ export async function POST(req: NextRequest) {
   const eventType = (payload as Record<string, unknown>)?.type;
   console.log("Webhook event type:", eventType);
 
-  // Clock skew tolerance: warn if webhook timestamp drifts >30s from server time
-  const eventCreatedAt = (payload as Record<string, unknown>)?.created_at;
-  if (typeof eventCreatedAt === "string") {
-    const eventTime = new Date(eventCreatedAt).getTime();
-    const serverTime = Date.now();
-    const driftSeconds = Math.abs(serverTime - eventTime) / 1000;
-    if (driftSeconds > 30) {
-      console.warn(
-        `Webhook clock skew detected: drift=${driftSeconds.toFixed(1)}s, event_time=${eventCreatedAt}, server_time=${new Date(serverTime).toISOString()}`
-      );
-    }
-  }
-
   if (eventType === "call.session_started") {
     const event = payload as CallSessionStartedEvent;
     const meetingId = event.call.custom?.meetingId;
@@ -120,16 +107,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Agent not found" }, { status: 404 });
     }
 
-
-    // Backdate internal call tokens by 10s to absorb Vercel↔Stream clock drift.
-    // connectOpenAi() generates a call token internally; without this, Stream
-    // rejects it as "issued in the future" when server clocks diverge.
+    // Monkey-patch to fix JWT clock skew issue
     const originalGenerateCallToken =
       streamVideo.generateCallToken.bind(streamVideo);
     streamVideo.generateCallToken = (payload: any) => {
       return originalGenerateCallToken({
         ...payload,
-        iat: Math.floor(Date.now() / 1000) - 60,
+        iat: Math.floor(Date.now() / 1000) - 60, // Backdate by 60 seconds
       });
     };
 
@@ -182,19 +166,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Only end the call when the human user leaves, not the AI agent.
-    // If the AI has a transient disconnect, we don't want to kill the session.
-    const leftUserId = event.participant?.user?.id;
-
-    const [meeting] = await db
-      .select()
-      .from(meetings)
-      .where(eq(meetings.id, meetingId));
-
-    if (meeting && leftUserId !== meeting.agentId) {
-      const call = streamVideo.video.call("default", meetingId);
-      await call.end();
-    }
+    const call = streamVideo.video.call("default", meetingId);
+    await call.end();
   } else if(eventType === "call.session_ended"){
     const event = payload as CallEndedEvent;
     const meetingId = event.call.custom?.meetingId;

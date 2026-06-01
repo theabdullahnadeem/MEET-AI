@@ -26,16 +26,10 @@ export const CallUI = ({meetingName}: Props) => {
         setShow("call");
     };
 
-    const handleLeave = async () => {
+    const handleLeave = () => {
         if(!call) return;
 
-        try {
-            await call.endCall();
-        } catch (e) {
-            // Call may already be ended server-side (e.g. via webhook);
-            // fall back to leaving gracefully.
-            try { await call.leave(); } catch {}
-        }
+        call.endCall();
         setShow("ended");
     };
 
