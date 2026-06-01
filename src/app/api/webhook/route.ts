@@ -182,8 +182,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const call = streamVideo.video.call("default", meetingId);
-    await call.end();
+    // Only end the call when the human user leaves, not the AI agent.
+    // If the AI has a transient disconnect, we don't want to kill the session.
+    const leftUserId = event.participant?.user?.id;
+
+    const [meeting] = await db
+      .select()
+      .from(meetings)
+      .where(eq(meetings.id, meetingId));
+
+    if (meeting && leftUserId !== meeting.agentId) {
+      const call = streamVideo.video.call("default", meetingId);
+      await call.end();
+    }
   } else if(eventType === "call.session_ended"){
     const event = payload as CallEndedEvent;
     const meetingId = event.call.custom?.meetingId;
