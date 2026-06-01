@@ -1,11 +1,13 @@
 import { db } from "@/db";
-import { agents, meetings, user } from "@/db/schema";
+import { agents, meetings, user, speakerMappings } from "@/db/schema";
 import { inngest } from "@/inngest/client";
 import { StreamTrancriptItem } from "@/modules/meetings/types";
-import { eq, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import JSONL from "jsonl-parse-stringify"
 
 import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
+import { streamChat } from "@/lib/stream-chat";
+import { generateAvatarUri } from "@/lib/avatar";
 
 const summarizer = createAgent({
   name: "summarizer",
@@ -28,7 +30,7 @@ Example:
 #### Next Section
 - Feature X automatically does Y
 - Mention of integration with Z`
-.trim(),
+  .trim(),
   model: openai({ model: "gpt-4o", apiKey: process.env.OPENAI_API_KEY }),
 });
 
@@ -36,74 +38,159 @@ export const meetingsProcessing = inngest.createFunction(
   { id: "meetings/processing" },
   { event: "meetings/processing" },
   async ({ event, step }) => {
-    const response = await step.run("fetch-transcript", async () => {
-      return fetch(event.data.transcriptUrl).then(res => res.text())
-    })
+    try {
+      const response = await step.run("fetch-transcript", async () => {
+        const res = await fetch(event.data.transcriptUrl);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch transcript: ${res.status} ${res.statusText}`);
+        }
+        return res.text();
+      });
 
-    const transcript = await step.run("parse-transcript", async () => {
-      return JSONL.parse<StreamTrancriptItem>(response)
-    });
+      const transcript = await step.run("parse-transcript", async () => {
+        return JSONL.parse<StreamTrancriptItem>(response);
+      });
 
-    const transcriptWithSpeakers = await step.run("add-speakers", async () => {
-      const speakerIds = [
-        ...new Set(transcript.map(item => item.speaker_id))
-      ];
+      const transcriptWithSpeakers = await step.run("add-speakers", async () => {
+        const speakerIds = [
+          ...new Set(transcript.map(item => item.speaker_id))
+        ];
 
-      const userSpeakers = await db
-        .select()
-        .from(user)
-        .where(inArray(user.id, speakerIds))
-        .then((users) => (
-          users.map((user) => ({
-            ...user,
-          }))
-        ));
+        const userSpeakers = await db
+          .select()
+          .from(user)
+          .where(inArray(user.id, speakerIds))
+          .then((users) => (
+            users.map((user) => ({
+              ...user,
+            }))
+          ));
 
-      const agentSpeakers = await db
-        .select()
-        .from(agents)
-        .where(inArray(agents.id, speakerIds))
-        .then((agents) => (
-          agents.map((agent) => ({
-            ...agent,
-          }))
-        ));
+        const agentSpeakers = await db
+          .select()
+          .from(agents)
+          .where(inArray(agents.id, speakerIds))
+          .then((agents) => (
+            agents.map((agent) => ({
+              ...agent,
+            }))
+          ));
 
+        const speakers = [...userSpeakers, ...agentSpeakers];
+        const knownSpeakerIds = new Set(speakers.map(s => s.id));
 
-      const speakers = [...userSpeakers, ...agentSpeakers];
+        // Build sequential fallback labels for unmapped speakers
+        const unmappedSpeakerLabels = new Map<string, string>();
+        let participantCounter = 0;
 
-      return transcript.map((item) => {
-        const speaker = speakers.find((speaker) => speaker.id === item.speaker_id);
-        if (!speaker) {
+        for (const id of speakerIds) {
+          if (!knownSpeakerIds.has(id)) {
+            participantCounter++;
+            unmappedSpeakerLabels.set(id, `Participant ${participantCounter}`);
+          }
+        }
+
+        // Persist unmapped speaker IDs to debug table for investigation
+        if (unmappedSpeakerLabels.size > 0) {
+          const mappingsToInsert = Array.from(unmappedSpeakerLabels.entries()).map(
+            ([speakerId, label]) => ({
+              meetingId: event.data.meetingId,
+              speakerId,
+              originalLabel: label,
+            })
+          );
+          await db.insert(speakerMappings).values(mappingsToInsert);
+        }
+
+        return transcript.map((item) => {
+          const speaker = speakers.find((speaker) => speaker.id === item.speaker_id);
+          if (!speaker) {
+            return {
+              ...item,
+              user: {
+                name: unmappedSpeakerLabels.get(item.speaker_id) ?? "Unknown",
+              },
+            };
+          }
           return {
             ...item,
             user: {
-              name: "Unknown",
+              name: speaker.name,
             },
           };
-        }
-        return {
-          ...item,
-          user: {
-            name: speaker.name,
-          },
-        };
+        });
       });
-    });
 
-    const { output } = await summarizer.run(
-      "Summarize the following transcript:" + 
-      JSON.stringify(transcriptWithSpeakers)
-    );
+      // Calculate confidence: flag low if >30% of transcript lines are from unmapped speakers
+      const totalLines = transcript.length;
+      const unmappedLines = transcriptWithSpeakers.filter(
+        item => item.user.name.startsWith("Participant ") || item.user.name === "Unknown"
+      ).length;
+      const isLowConfidence = totalLines > 0 ? (unmappedLines / totalLines) > 0.3 : false;
 
-    await step.run("save-summary", async () => {
-      await db
-      .update(meetings)
-      .set({
-        summary:(output[0] as TextMessage).content as string,
-        status: "completed",
-      }) 
-      .where(eq(meetings.id, event.data.meetingId))
-    })
+      const { output } = await summarizer.run(
+        "Summarize the following transcript:" + 
+        JSON.stringify(transcriptWithSpeakers)
+      );
+
+      await step.run("save-summary", async () => {
+        await db
+        .update(meetings)
+        .set({
+          summary:(output[0] as TextMessage).content as string,
+          status: "completed",
+          lowConfidence: isLowConfidence,
+        }) 
+        .where(eq(meetings.id, event.data.meetingId))
+      });
+
+      // Send Stream Chat notification when summary is ready
+      await step.run("notify-summary-ready", async () => {
+        const [meeting] = await db
+          .select()
+          .from(meetings)
+          .where(eq(meetings.id, event.data.meetingId));
+
+        if (meeting) {
+          const [existingAgent] = await db
+            .select()
+            .from(agents)
+            .where(eq(agents.id, meeting.agentId));
+
+          if (existingAgent) {
+            const avatarUrl = generateAvatarUri({
+              seed: existingAgent.name,
+              variant: "botttsNeutral",
+            });
+
+            await streamChat.upsertUser({
+              id: existingAgent.id,
+              name: existingAgent.name,
+              image: avatarUrl,
+            });
+
+            const channel = streamChat.channel("messaging", meeting.id);
+            await channel.create();
+            await channel.sendMessage({
+              text: `📝 **Meeting summary is ready!** Your meeting "${meeting.name}" has been processed. You can now view the summary, transcript, and recording.`,
+              user_id: existingAgent.id,
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("Meeting processing failed:", error);
+
+      // Transition to failed status so the UI can show an error state
+      await step.run("mark-as-failed", async () => {
+        await db
+          .update(meetings)
+          .set({ status: "failed" })
+          .where(eq(meetings.id, event.data.meetingId));
+      });
+
+      // Re-throw so Inngest logs the error and can apply retry policies
+      throw error;
+    }
   },
 );

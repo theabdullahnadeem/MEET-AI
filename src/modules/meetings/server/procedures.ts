@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { agents, meetings, user } from "@/db/schema";
+import { agents, meetings, user, speakerMappings } from "@/db/schema";
 import { createTRPCRouter, premiumProcedure, protectedProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -109,6 +109,32 @@ export const meetingsRouter = createTRPCRouter({
     ));
 
     const speakers = [...userSpeakers, ...agentSpeakers];
+    const knownSpeakerIds = new Set(speakers.map(s => s.id));
+
+    // Fetch any custom speaker name overrides from the debug/mapping table
+    const existingMappings = await db
+      .select()
+      .from(speakerMappings)
+      .where(eq(speakerMappings.meetingId, input.id));
+
+    const mappingsBySpkId = new Map(
+      existingMappings.map(m => [m.speakerId, m])
+    );
+
+    // Build sequential fallback labels for unmapped speakers
+    const unmappedLabels = new Map<string, string>();
+    let participantCounter = 0;
+    for (const id of speakerIds) {
+      if (!knownSpeakerIds.has(id)) {
+        const mapping = mappingsBySpkId.get(id);
+        if (mapping?.customName) {
+          unmappedLabels.set(id, mapping.customName);
+        } else {
+          participantCounter++;
+          unmappedLabels.set(id, mapping?.originalLabel ?? `Participant ${participantCounter}`);
+        }
+      }
+    }
 
     const transcriptWithSpeakers = transcript.map((item)=>{
       const speaker = speakers.find(
@@ -116,11 +142,12 @@ export const meetingsRouter = createTRPCRouter({
       );
 
       if(!speaker){
+        const fallbackName = unmappedLabels.get(item.speaker_id) ?? "Unknown";
         return {
           ...item,
           user:{
-            name: "Unknown",
-            image: generateAvatarUri({ seed: "Unknown", variant: "initials" }),
+            name: fallbackName,
+            image: generateAvatarUri({ seed: fallbackName, variant: "initials" }),
           }
         }
       };
@@ -136,6 +163,63 @@ export const meetingsRouter = createTRPCRouter({
 
     return transcriptWithSpeakers;
   }),
+  updateSpeakerName: protectedProcedure
+    .input(z.object({
+      meetingId: z.string().min(1),
+      speakerId: z.string().min(1),
+      name: z.string().min(1).max(100),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      // Verify the user owns this meeting
+      const [meeting] = await db
+        .select()
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id)
+          )
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      // Check if a mapping already exists
+      const [existing] = await db
+        .select()
+        .from(speakerMappings)
+        .where(
+          and(
+            eq(speakerMappings.meetingId, input.meetingId),
+            eq(speakerMappings.speakerId, input.speakerId)
+          )
+        );
+
+      if (existing) {
+        const [updated] = await db
+          .update(speakerMappings)
+          .set({ customName: input.name })
+          .where(eq(speakerMappings.id, existing.id))
+          .returning();
+        return updated;
+      }
+
+      // Create a new mapping if one doesn't exist yet
+      const [created] = await db
+        .insert(speakerMappings)
+        .values({
+          meetingId: input.meetingId,
+          speakerId: input.speakerId,
+          originalLabel: input.name,
+          customName: input.name,
+        })
+        .returning();
+      return created;
+    }),
   generateToken: protectedProcedure.mutation(async ({ctx}) => {
     await streamVideo.upsertUsers([
       {
@@ -147,12 +231,10 @@ export const meetingsRouter = createTRPCRouter({
     ]);
 
     const expirationTime = Math.floor(Date.now() / 1000) + 3600;
-     
 
     const token = streamVideo.generateUserToken({
       user_id: ctx.auth.user.id,
       exp: expirationTime,
-      iat: Math.floor(Date.now() / 1000) - 60,
     });
 
     return token;
@@ -297,6 +379,7 @@ export const meetingsRouter = createTRPCRouter({
           MeetingStatus.ACTIVE,
           MeetingStatus.PROCESSING,
           MeetingStatus.COMPLETED,
+          MeetingStatus.FAILED,
           MeetingStatus.CANCELLED,
         ]).nullish(),
       }),
