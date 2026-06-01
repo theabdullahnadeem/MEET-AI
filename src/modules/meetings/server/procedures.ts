@@ -153,7 +153,7 @@ export const meetingsRouter = createTRPCRouter({
       user_id: ctx.auth.user.id,
       exp: expirationTime,
       iat: Math.floor(Date.now() / 1000) - 60,
-    });-6
+    });
 
     return token;
 
