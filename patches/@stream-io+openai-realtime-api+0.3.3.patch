@@ -1,0 +1,26 @@
+diff --git a/node_modules/@stream-io/openai-realtime-api/dist/index.cjs b/node_modules/@stream-io/openai-realtime-api/dist/index.cjs
+index 7cdcd54..f72511b 100644
+--- a/node_modules/@stream-io/openai-realtime-api/dist/index.cjs
++++ b/node_modules/@stream-io/openai-realtime-api/dist/index.cjs
+@@ -66,7 +66,7 @@ function patchRealtimeApi(realtime) {
+       finishRequest: (_request) => {
+         const request = _request;
+         request.setHeader("Authorization", `Bearer ${this.apiKey}`);
+-        request.setHeader("OpenAI-Beta", "realtime=v1");
++        // OpenAI-Beta header removed - Realtime API is now GA
+         request.setHeader("Stream-Authorization", this.streamToken);
+         request.end();
+       }
+diff --git a/node_modules/@stream-io/openai-realtime-api/dist/index.mjs b/node_modules/@stream-io/openai-realtime-api/dist/index.mjs
+index c18c095..3b3940c 100644
+--- a/node_modules/@stream-io/openai-realtime-api/dist/index.mjs
++++ b/node_modules/@stream-io/openai-realtime-api/dist/index.mjs
+@@ -45,7 +45,7 @@ function patchRealtimeApi(realtime) {
+       finishRequest: (_request) => {
+         const request = _request;
+         request.setHeader("Authorization", `Bearer ${this.apiKey}`);
+-        request.setHeader("OpenAI-Beta", "realtime=v1");
++        // OpenAI-Beta header removed - Realtime API is now GA
+         request.setHeader("Stream-Authorization", this.streamToken);
+         request.end();
+       }
