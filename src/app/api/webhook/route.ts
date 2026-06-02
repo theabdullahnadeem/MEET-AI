@@ -6,8 +6,8 @@ import {
   CallEndedEvent,
   CallTranscriptionReadyEvent,
   CallSessionParticipantLeftEvent,
+  CallSessionParticipantJoinedEvent,
   CallRecordingReadyEvent,
-  CallSessionStartedEvent,
   MessageNewEvent
 } from "@stream-io/node-sdk";
 
@@ -51,10 +51,12 @@ export async function POST(req: NextRequest) {
   const eventType = (payload as Record<string, unknown>)?.type;
   console.log("Webhook event type:", eventType);
 
-  if (eventType === "call.session_started") {
-    const event = payload as CallSessionStartedEvent;
-    const meetingId = event.call.custom?.meetingId;
-    console.log("Meeting ID from event:", meetingId);
+  if (eventType === "call.session_participant_joined") {
+    const event = payload as CallSessionParticipantJoinedEvent;
+    const meetingId = event.call_cid.split(":")[1];
+    const joinedUserId = event.participant?.user?.id;
+
+    console.log("Participant joined meeting:", meetingId, "user:", joinedUserId);
 
     if (!meetingId) {
       return NextResponse.json(
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const [exsistingMeeting] = await db
+    const [existingMeeting] = await db
       .select()
       .from(meetings)
       .where(
@@ -76,16 +78,13 @@ export async function POST(req: NextRequest) {
         ),
       );
 
-    console.log(
-      "Found meeting:",
-      exsistingMeeting ? "YES" : "NO (skipped - already active?)",
-    );
+    // Only act if meeting is upcoming and it's a human (not the AI agent) joining
+    if (!existingMeeting) {
+      return NextResponse.json({ status: "skipped" });
+    }
 
-    if (!exsistingMeeting) {
-      return NextResponse.json(
-        { error: "Meeting not found or already completed" },
-        { status: 404 },
-      );
+    if (joinedUserId === existingMeeting.agentId) {
+      return NextResponse.json({ status: "agent joined, skipped" });
     }
 
     await db
@@ -99,7 +98,7 @@ export async function POST(req: NextRequest) {
     const [existingAgent] = await db
       .select()
       .from(agents)
-      .where(eq(agents.id, exsistingMeeting.agentId));
+      .where(eq(agents.id, existingMeeting.agentId));
 
     console.log("Found agent:", existingAgent ? existingAgent.name : "NO");
 
@@ -113,7 +112,7 @@ export async function POST(req: NextRequest) {
     streamVideo.generateCallToken = (payload: any) => {
       return originalGenerateCallToken({
         ...payload,
-        iat: Math.floor(Date.now() / 1000) - 60, // Backdate by 60 seconds
+        iat: Math.floor(Date.now() / 1000) - 60,
       });
     };
 
@@ -143,7 +142,7 @@ export async function POST(req: NextRequest) {
           model: "whisper-1",
         },
       });
-      // Add event listeners for debugging
+
       realtimeClient.on("error", (error: any) => {
         console.error("Realtime ERROR:", error);
       });
