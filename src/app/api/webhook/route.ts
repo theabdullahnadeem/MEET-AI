@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
         call,
         openAiApiKey: process.env.OPENAI_API_KEY!,
         agentUserId: existingAgent.id,
-        model: "gpt-4o-realtime-preview",
+        model: "gpt-realtime-2",
       });
 
       console.log("Connected! Updating session...");
