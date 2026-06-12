@@ -137,28 +137,6 @@ export const meetingsRouter = createTRPCRouter({
 
     return transcriptWithSpeakers;
   }),
-  generateToken: protectedProcedure.mutation(async ({ctx}) => {
-    await streamVideo.upsertUsers([
-      {
-        id: ctx.auth.user.id,
-        name: ctx.auth.user.name,
-        role: "admin",
-        image: ctx.auth.user.image ?? generateAvatarUri({ seed: ctx.auth.user.name, variant: "initials" }),
-      }
-    ]);
-
-    const expirationTime = Math.floor(Date.now() / 1000) + 3600;
-     
-
-    const token = streamVideo.generateUserToken({
-      user_id: ctx.auth.user.id,
-      exp: expirationTime,
-      iat: Math.floor(Date.now() / 1000) - 60,
-    });
-
-    return token;
-
-  }) ,
   remove: protectedProcedure
   .input(z.object({ id: z.string() }))
   .mutation(async ({input, ctx}) => {
