@@ -13,6 +13,7 @@ import {
 import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
 import { streamVideo } from "@/lib/stream-video";
+import { livekitRoomService } from "@/lib/livekit";
 import { generateAvatarUri } from "@/lib/avatar";
 import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
@@ -254,6 +255,19 @@ export const meetingsRouter = createTRPCRouter({
             }),
           },
         ])
+
+        await livekitRoomService.createRoom({
+          name: createdMeeting.id,
+          emptyTimeout: 300,        // 5 min — room auto-closes if empty
+          maxParticipants: 50,      // supports multi-user expansion
+          metadata: JSON.stringify({
+            meetingId: createdMeeting.id,
+            meetingName: createdMeeting.name,
+            agentId: existingAgent.id,
+            agentName: existingAgent.name,
+            agentInstructions: existingAgent.instructions,
+          }),
+        });
 
       return createdMeeting;
     }),
