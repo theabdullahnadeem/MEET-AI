@@ -2,19 +2,10 @@
 
 import { Loader2Icon } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { LiveKitRoom } from "@livekit/components-react";
 
-import {
-  Call,
-  CallingState,
-  StreamCall,
-  StreamVideo,
-  StreamVideoClient,
-} from "@stream-io/video-react-sdk";
+import "@livekit/components-styles";
 
-import { useTRPC } from "@/trpc/client";
-
-import "@stream-io/video-react-sdk/dist/css/styles.css";
 import { CallUI } from "./call-ui";
 
 interface Props {
@@ -25,74 +16,47 @@ interface Props {
   userImage: string;
 }
 
-export const CallConnect = ({
-  meetingId,
-  meetingName,
-  userId,
-  userName,
-  userImage,
-}: Props) => {
-  const trpc = useTRPC();
-  const { mutateAsync: generateToken } = useMutation(
-    trpc.meeting.generateToken.mutationOptions(),
-  );
-
-  const [client, setClient] = useState<StreamVideoClient>();
+export const CallConnect = ({ meetingId, meetingName }: Props) => {
+  const [token, setToken] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const _client = new StreamVideoClient({
-      apiKey: process.env.NEXT_PUBLIC_STREAM_API_KEY!,
-    });
-
     let isIgnore = false;
 
-    const connect = async () => {
+    const fetchToken = async () => {
       try {
-        await _client.connectUser(
-          {
-            id: userId,
-            name: userName,
-            image: userImage,
-          },
-          generateToken,
+        const res = await fetch(
+          `/api/livekit-token?room=${encodeURIComponent(meetingId)}`,
         );
-
+        if (!res.ok) throw new Error("Failed to fetch token");
+        const data = await res.json();
         if (!isIgnore) {
-          setClient(_client);
+          setToken(data.token);
         }
       } catch (e) {
-        console.error("Stream connection failed:", e);
+        console.error("LiveKit token fetch failed:", e);
+        if (!isIgnore) {
+          setError("Could not connect to meeting. Please try again.");
+        }
       }
     };
 
-    connect();
+    fetchToken();
 
     return () => {
       isIgnore = true;
-      _client.disconnectUser();
-      setClient(undefined);
     };
-  }, [userId, userName, userImage, generateToken]);
+  }, [meetingId]);
 
-  const [call, setCall] = useState<Call>();
-  useEffect(() => {
-    if (!client) return;
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-radial from-sidebar-accent to-sidebar">
+        <p className="text-white text-sm">{error}</p>
+      </div>
+    );
+  }
 
-    const _call = client.call("default", meetingId);
-    _call.camera.disable();
-    // _call.microphone.disable();
-    setCall(_call);
-
-    return () => {
-      if (_call.state.callingState !== CallingState.LEFT) {
-        _call.leave();
-        _call.endCall();
-        setCall(undefined);
-      }
-    };
-  }, [client, meetingId]);
-
-  if (!client || !call) {
+  if (!token) {
     return (
       <div className="flex h-screen items-center justify-center bg-radial from-sidebar-accent to-sidebar">
         <Loader2Icon className="size-6 animate-spin text-white" />
@@ -101,10 +65,16 @@ export const CallConnect = ({
   }
 
   return (
-    <StreamVideo client={client}>
-      <StreamCall call={call}>
-        <CallUI meetingName={meetingName} />
-      </StreamCall>
-    </StreamVideo>
+    <LiveKitRoom
+      token={token}
+      serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL!}
+      connect={true}
+      audio={true}
+      video={true}
+      data-lk-theme="default"
+      className="h-full"
+    >
+      <CallUI meetingName={meetingName} />
+    </LiveKitRoom>
   );
 };

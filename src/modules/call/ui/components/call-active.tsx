@@ -1,30 +1,56 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import{
-   CallControls,
-   SpeakerLayout
-} from "@stream-io/video-react-sdk"
+import {
+  GridLayout,
+  ParticipantTile,
+  RoomAudioRenderer,
+  useTracks,
+  ControlBar,
+} from "@livekit/components-react";
+import { Track } from "livekit-client";
 
 interface Props {
-    onLeave: () => void;
-    meetingName: string;
-};
-
-export const CallActive = ({onLeave, meetingName}: Props) => {
-    return (
-        <div className="flex flex-col justify-between p-4 h-full text-white">
-            <div className="bg-[#101213] rounded-full p-4 flex items-center gap-4">
-                <Link href="/" className="flex items-center justify-center p-1 bg-white/10 rounded-full w-fit h-fit">
-                    <Image src="/logo.svg" alt="Logo" width={22} height={22} />
-                </Link>
-                <h4 className="text-base">
-                    {meetingName}
-                </h4>
-            </div>
-            <SpeakerLayout />
-            <div className="bg-[#101213] rounded-full px-4">
-                <CallControls onLeave={onLeave} />
-            </div>
-        </div>
-    )
+  meetingName: string;
 }
+
+export const CallActive = ({ meetingName }: Props) => {
+  const tracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false },
+  );
+
+  return (
+    <div className="flex flex-col justify-between p-4 h-full text-white">
+      <div className="bg-[#101213] rounded-full p-4 flex items-center gap-4">
+        <Link
+          href="/"
+          className="flex items-center justify-center p-1 bg-white/10 rounded-full w-fit h-fit"
+        >
+          <Image src="/logo.svg" alt="Logo" width={22} height={22} />
+        </Link>
+        <h4 className="text-base">{meetingName}</h4>
+      </div>
+      <GridLayout tracks={tracks} className="flex-1">
+        <ParticipantTile />
+      </GridLayout>
+      <RoomAudioRenderer />
+      <div className="bg-[#101213] rounded-full px-4">
+        <ControlBar
+          controls={{
+            camera: true,
+            microphone: true,
+            screenShare: false,
+            chat: false,
+            settings: false,
+            leave: true,
+          }}
+        />
+      </div>
+    </div>
+  );
+};
