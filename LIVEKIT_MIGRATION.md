@@ -7,6 +7,31 @@
 
 ---
 
+## Status (updated 2026-06-15)
+
+| PR | Status |
+|----|--------|
+| PR 1 — Foundation | ✅ merged (#38) |
+| PR 2 — Token + Room creation | ✅ merged (#39) |
+| PR 3 — Call UI swap | ✅ merged (#40) — follow-up layout fix #41 still open |
+| PR 4 — AI Agent (core fix) | ✅ merged (#42) + metadata fix (#43); **agent live on LiveKit Cloud, confirmed talking in production** |
+| PR 5 — Webhooks migration | ⬜ next |
+| PR 6 — Transcription + recording | ⬜ next |
+
+**Key changes vs the original plan (learned while building):**
+- **Agent hosting is LiveKit Cloud, not Koyeb.** Koyeb was acquired by Mistral AI (Feb 2026) and dropped its free tier for new accounts (now requires a card / Pro plan). The agent runs on **LiveKit Cloud native agent hosting** instead — free Build tier (1,000 agent min/mo, 5 concurrent sessions), same vendor. Deploy with `lk agent deploy`; see `AGENT_DEPLOY.md`. **Merging a PR does NOT redeploy the agent** — that step is always manual (unlike Vercel).
+- **Realtime model is `gpt-realtime`** (the plugin's default GA model), not `gpt-realtime-2`.
+- **Agent scripts use `tsx`**, not `ts-node` (which was removed).
+- **The `@livekit/agents@1.4.5` API differs from the speculative code below.** The real shapes are documented inline in PR 4 / PR 6. Always verify against the installed `.d.ts` before writing agent code.
+
+**Planned next feature (after the migration): Google Meet–style knock-to-join multi-user.**
+The LiveKit media layer is already multi-user; the app just gates meetings to their creator
+(`meeting.getOne`). Decided to add: host/guest tokens, a call-page read for non-owners, and a
+waiting-room knock flow (guest requests → host admits → guest gets a token). This affects PR 5 —
+see the multi-user note there.
+
+---
+
 ## Why We Are Migrating
 
 Stream Video's `connectOpenAi()` relies on `@stream-io/openai-realtime-api` which wraps
@@ -40,25 +65,29 @@ User A ──┐
 User B ──┤──── LiveKit WebRTC ──── LiveKit Cloud SFU ──── LiveKit Agent Worker
 User C ──┘                                                       │
                                                       OpenAI GA Realtime WS
-                                                       (gpt-realtime-2)
+                                                       (gpt-realtime)
                                                     AI audio published back
                                                     to room — all users hear it
 ```
 
 ### Key Architectural Point
-The LiveKit Agent Worker is a **separate long-lived Node.js process** deployed on **Koyeb** (free tier).
-This is not optional — a real-time AI agent needs a persistent WebSocket connection to both
-LiveKit and OpenAI simultaneously. Vercel serverless functions time out.
+The LiveKit Agent Worker is a **separate long-lived Node.js process** deployed on **LiveKit Cloud
+agent hosting** (free Build tier). This is not optional — a real-time AI agent needs a persistent
+WebSocket connection to both LiveKit and OpenAI simultaneously. Vercel serverless functions time out.
 
-**Why Koyeb:**
-- Genuine free tier (1 nano instance, always-on, no credit card required)
-- Upgrading is a single dropdown change — pick a bigger instance, redeploy, done in ~2 minutes
-- No data to migrate when scaling — the agent is completely stateless
+> The original plan used Koyeb. Koyeb removed its free tier for new accounts (Mistral acquisition,
+> Feb 2026), so we deploy to LiveKit Cloud instead. References to "Koyeb" below are historical —
+> read them as "LiveKit Cloud agent hosting". See `AGENT_DEPLOY.md` for the real deploy steps.
+
+**Why LiveKit Cloud agent hosting:**
+- Free Build tier: 1,000 agent minutes/month, up to 5 concurrent agent sessions, no credit card
+- Same vendor as the SFU — `LIVEKIT_*` creds are injected automatically; only `OPENAI_API_KEY` is a secret
+- Deploy/redeploy with one command (`lk agent deploy`); the agent is stateless
 - No vendor lock-in — the agent is plain Node.js, runs anywhere
 
 **Two services to run/deploy:**
 1. **Vercel** — Next.js app (existing, unchanged deployment)
-2. **Koyeb** — LiveKit Agent worker (new, free tier)
+2. **LiveKit Cloud** — LiveKit Agent worker (free Build tier)
 
 ---
 
@@ -87,9 +116,10 @@ LiveKit and OpenAI simultaneously. Vercel serverless functions time out.
    - `LIVEKIT_API_KEY` (e.g. `APIxxxxxxxxx`)
    - `LIVEKIT_API_SECRET` (long string)
 
-### 2. Koyeb (free, no credit card)
-1. Go to https://koyeb.com → Sign up
-2. You will deploy here in PR 4 — no setup needed yet, just create the account
+### 2. LiveKit Cloud agent hosting (free Build tier) — replaces Koyeb
+No separate account needed — it's the same LiveKit Cloud project from step 1. In PR 4 you install
+the LiveKit CLI (`winget install LiveKit.LiveKitCLI`), run `lk cloud auth`, and `lk agent create`.
+(The original plan used Koyeb, which no longer has a free tier for new accounts.)
 
 ---
 
@@ -107,13 +137,12 @@ NEXT_PUBLIC_LIVEKIT_URL=wss://your-app.livekit.cloud
 OPENAI_API_KEY=sk-...
 ```
 
-### Add to Koyeb service env vars (set in PR 4)
+### Add to LiveKit Cloud agent secrets (set in PR 4 via `lk agent create --secrets-file`)
 ```env
-LIVEKIT_URL=wss://your-app.livekit.cloud
-LIVEKIT_API_KEY=APIxxxxxxxxxxxxxxxx
-LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET are injected automatically
+# by LiveKit Cloud for hosted agents — do NOT set them. Only set:
 OPENAI_API_KEY=sk-...
-DATABASE_URL=postgresql://...
+# DATABASE_URL is only needed once PR 6 has the agent write transcripts to the DB.
 ```
 
 ### Keep (still needed for Stream Chat)
@@ -124,8 +153,11 @@ STREAM_VIDEO_SECRET=...          # can be removed after PR 5 is stable
 
 ---
 
-## PR 1 — LiveKit Foundation
+## PR 1 — LiveKit Foundation — ✅ DONE (#38)
 **Goal:** Install packages, add env vars, create server client. Zero breaking changes.
+
+> As built: `createLiveKitToken` is **async** (`toJwt()` returns a Promise in
+> livekit-server-sdk v2). `ts-node` was installed here but later removed in favour of `tsx`.
 
 ### Packages to install
 ```bash
@@ -205,7 +237,7 @@ npm install
 
 ---
 
-## PR 2 — Token Generation + Room Creation
+## PR 2 — Token Generation + Room Creation — ✅ DONE (#39)
 **Goal:** Add LiveKit token endpoint, wire LiveKit room creation into `meeting.create`.
 Stream Video still runs in parallel during this PR.
 
@@ -282,7 +314,7 @@ git revert <pr2-merge-commit>
 
 ---
 
-## PR 3 — Call UI Swap
+## PR 3 — Call UI Swap — ✅ DONE (#40, layout follow-up #41)
 **Goal:** Replace Stream Video React SDK components with LiveKit React components.
 
 ### Files to REPLACE entirely:
@@ -567,17 +599,34 @@ npm install
 
 ---
 
-## PR 4 — AI Agent (The Core Fix)
-**Goal:** Deploy a LiveKit Agent worker on Koyeb that joins every meeting room, connects to
+## PR 4 — AI Agent (The Core Fix) — ✅ DONE (#42 + #43)
+**Goal:** Deploy a LiveKit Agent worker that joins every meeting room, connects to
 OpenAI GA Realtime, and bridges audio for all participants simultaneously.
 
 This is the PR that actually fixes the broken real-time AI. All users in the meeting
 hear the same AI agent. The AI hears all participants. Fully multi-user from day one.
 
+> **✅ AS BUILT — the code and deploy steps below are the ORIGINAL speculative plan and are
+> partly wrong. What actually shipped is in `src/agents/meeting-agent.ts` and `AGENT_DEPLOY.md`.**
+> Corrections discovered while building (verified against `@livekit/agents@1.4.5`):
+> - There is no `openai.realtime.RealtimeAgent`. The real shape is
+>   `new voice.AgentSession({ llm: new openai.realtime.RealtimeModel({...}) })` then
+>   `session.start({ agent: new voice.Agent({ instructions }), room: ctx.room })`.
+> - `turnDetection` keys are **snake_case** (`prefix_padding_ms`, `silence_duration_ms`).
+> - Model is **`gpt-realtime`** (plugin default), not `gpt-realtime-2`.
+> - Worker entry is guarded with `process.argv[1] === fileURLToPath(import.meta.url)`; creds come
+>   from env, so `WorkerOptions` is minimal. No `agentName` → automatic dispatch (which works).
+> - **Metadata bug (fixed in #43):** read room metadata from `ctx.job.room?.metadata`, NOT
+>   `ctx.room.metadata` — `ctx.room` is an unconnected stub until `ctx.connect()`, so its metadata
+>   is empty at entry. Reading the wrong one made the agent exit on every job.
+> - Deploy is **LiveKit Cloud** (`lk agent create` / `lk agent deploy`), not Koyeb. `Dockerfile`
+>   and `.dockerignore` at the repo root are for this agent; the agent runs via `tsx` (not compiled).
+> - To debug: `lk agent logs --log-type deploy` (shows worker stdout incl. `[Agent] …` lines).
+
 ### Architecture
 ```
 User A ──┐
-User B ──┤── LiveKit room ── Agent Worker (Koyeb) ── OpenAI gpt-realtime-2
+User B ──┤── LiveKit room ── Agent Worker (LiveKit Cloud) ── OpenAI gpt-realtime
 User C ──┘        ↑                    │
                   └──── AI audio ──────┘  (published to room, everyone hears it)
 ```
@@ -744,6 +793,21 @@ git revert <pr4-merge-commit>
 
 ## PR 5 — Webhooks Migration
 **Goal:** Replace Stream Video webhooks with LiveKit webhooks for meeting state transitions.
+
+> **⚠️ MULTI-USER CORRECTION (read before writing the handler).** The original `participant_left`
+> logic below marks the meeting `processing` as soon as **any** participant leaves. That is wrong
+> for multi-user meetings (one of several people leaving would end the meeting for everyone) — and
+> we are adding Google Meet–style multi-user join next. **Do NOT transition to `processing` on
+> `participant_left`.** Instead drive the end state off **`room_finished`** (fires when the room
+> empties out and closes after `emptyTimeout`), which naturally handles N participants:
+> - `participant_joined` (first human) → `status: active` (unchanged, fine)
+> - `participant_left` → do nothing for status (optionally stop recording when the last human
+>   leaves, but rely on `room_finished` for the state change)
+> - `room_finished` → `status: processing`, set `endedAt`, then trigger the Inngest summarization
+>
+> If you want an `active → processing` transition before the room fully closes, gate it on "last
+> **human** participant left" by checking remaining participants (exclude the agent identity), not
+> on the first `participant_left`. Keep ignoring the agent's own identity in all handlers.
 
 ### File: `src/app/api/livekit-webhook/route.ts` (CREATE NEW)
 ```typescript
@@ -924,6 +988,18 @@ try {
 > AWS S3 free tier includes 5GB storage and 20,000 GET requests/month — sufficient for early stage.
 
 ### Transcription via Agent Worker
+
+> **⚠️ The event code below is speculative** — `session.on("agent_speech_committed")` /
+> `"user_speech_committed"` are NOT the real `@livekit/agents@1.4.5` events. Verify against the
+> installed types before writing: the real `AgentSession` emits events like
+> `conversation_item_added` and `user_input_transcribed` (see
+> `node_modules/@livekit/agents/dist/voice/events.d.ts` and `agent_session.d.ts`). Use those.
+>
+> Also: the agent will now import from `@/db` etc. The agent runs via **`tsx`**, which resolves
+> the `@/*` path alias from `tsconfig.json` automatically — no `tsconfig-paths` needed. And the
+> LiveKit Cloud agent will need `DATABASE_URL` added as a secret (`lk agent update` /
+> `--secrets-file`) for the transcript write.
+
 Add transcript capture to `src/agents/meeting-agent.ts` inside the `entry` function,
 after `session.start()`:
 
@@ -1005,19 +1081,19 @@ git revert <pr6-merge-commit>
 - Add `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `NEXT_PUBLIC_LIVEKIT_URL` to project env vars
 - Register LiveKit webhook URL in LiveKit Cloud dashboard
 
-### Koyeb (LiveKit Agent worker)
-- Create account at koyeb.com (free, no card)
-- New service → GitHub → select repo
-- Build: Docker (using `Dockerfile` added in PR 4)
-- Instance: **nano** (free tier)
-- Set all 5 env vars: `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `OPENAI_API_KEY`, `DATABASE_URL`
-- Deploy → verify worker appears in LiveKit Cloud dashboard
+### LiveKit Cloud (LiveKit Agent worker) — replaces Koyeb
+- Install CLI: `winget install LiveKit.LiveKitCLI`; authenticate: `lk cloud auth`
+- From the repo root: `lk agent create --secrets-file "<abs path>\.env.agent" .` (uses the root
+  `Dockerfile`). Subsequent deploys: `lk agent deploy`.
+- Secrets file holds only `OPENAI_API_KEY` (+ `DATABASE_URL` after PR 6). `LIVEKIT_*` are injected.
+- `lk agent create` writes `livekit.toml` (commit it). Check `lk agent status` / `lk agent logs`.
+- **Merging a PR does not redeploy the agent — always run `lk agent deploy` yourself.**
+- Full steps + gotchas (e.g. use an absolute `--secrets-file` path on Windows): `AGENT_DEPLOY.md`.
 
 ### Scaling the agent worker (when needed)
-```
-Koyeb dashboard → service → Settings → Instance → change size → Redeploy
-```
-~2 minutes. No data migration. No code changes. Fully stateless.
+LiveKit Cloud autoscales agent sessions on the Build/Ship tiers. Bump the plan in the LiveKit
+Cloud dashboard when you exceed the free Build limits (1,000 agent min/mo, 5 concurrent sessions).
+The agent is stateless — no data migration, no code changes.
 
 ---
 
@@ -1025,13 +1101,14 @@ Koyeb dashboard → service → Settings → Instance → change size → Redepl
 
 | Risk | Mitigation |
 |------|-----------|
-| `@livekit/agents` JS API differs from docs | Run `node -e "console.log(Object.keys(require('@livekit/agents')))"` after install to verify exports |
-| Agent not dispatching to room | Check Koyeb logs — worker must show as connected in LiveKit Cloud dashboard |
-| Room metadata empty string | Guard with `ctx.room.metadata \|\| "{}"` before `JSON.parse` |
+| `@livekit/agents` JS API differs from docs | **Confirmed true (v1.4.5).** Verify every symbol against `node_modules/@livekit/agents/dist/**/*.d.ts` before writing — see the PR 4 "AS BUILT" note |
+| Agent metadata empty at entry | **Confirmed + fixed (#43).** Read `ctx.job.room?.metadata`, NOT `ctx.room.metadata` (unconnected stub until `ctx.connect()`) |
+| Agent not dispatching to room | Automatic dispatch works (no `agentName`). Debug with `lk agent logs --log-type deploy`; worker shows under "Agents" in the LiveKit Cloud dashboard |
+| Merging a PR doesn't redeploy the agent | LiveKit Cloud agents only update on `lk agent deploy` — run it manually after every agent change |
 | Agent appears in GridLayout (unwanted) | Filter agent participant by identity in `useTracks` — check `participant.identity === agentId` |
-| TypeScript path aliases in agent | `@/db`, `@/lib` etc. require `tsconfig-paths` at runtime. Add `tsconfig-paths/register` to agent entry or compile fully with `tsc` |
+| TypeScript path aliases in agent | The agent runs via `tsx`, which honors `tsconfig.json` `paths` — `@/db` etc. resolve with no extra setup |
+| PR 5 status logic + multi-user | Don't mark `processing` on `participant_left`; drive end state off `room_finished` (see PR 5 multi-user note) |
 | Transcript format mismatch | Update `StreamTrancriptItem` type and `getTranscript` query in PR 6 to match new format |
 | Recording requires S3 setup | AWS free tier covers early stage; can defer recording to post-launch if needed |
 | Stream Chat broken | Stream Chat is completely independent — never touched in any PR |
-| Multi-user: AI speaks to all | Confirmed — agent publishes one audio track to the room, all participants subscribe automatically |
-| Koyeb free tier RAM (256MB) | Agent uses ~30–50MB per active meeting. Free tier handles ~4–6 concurrent meetings comfortably |
+| Multi-user: AI speaks to all | Confirmed in production — agent publishes one audio track to the room, all participants subscribe automatically |

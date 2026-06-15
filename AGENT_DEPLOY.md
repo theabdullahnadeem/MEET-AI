@@ -32,30 +32,49 @@ respond to your voice.
 
 ## Deploy to LiveKit Cloud
 
-Prerequisites: the LiveKit CLI (`lk`) installed and authenticated against your
-project (`lk cloud auth`).
+**1. Install + authenticate the LiveKit CLI** (Windows):
 
-```bash
-# First time — creates the agent, generates livekit.toml, and deploys.
-# Run from the repo root (it uses the Dockerfile here).
-lk agent create
-
-# Subsequent deploys
-lk agent deploy
+```powershell
+winget install LiveKit.LiveKitCLI
+lk cloud auth          # opens a browser to link your project
 ```
 
-Set these as secrets in the LiveKit Cloud agent config (NOT committed):
+**2. Put your OpenAI key in a secrets file** at the repo root. Name it `.env.agent`
+(already covered by the `.env*` gitignore rule, so it won't be committed):
 
 ```
 OPENAI_API_KEY=sk-...
 ```
 
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are injected
-automatically by LiveKit Cloud for hosted agents — you do not set them.
+automatically by LiveKit Cloud for hosted agents — do NOT put them here.
+
+**3. Create + deploy** from the repo root (the trailing `.` is the build context,
+so you must `cd` to the repo root first):
+
+```powershell
+cd D:\Meetzio\MEET-AI
+# First time — registers the agent, writes livekit.toml, builds the image, deploys.
+# Use an ABSOLUTE path for --secrets-file; a relative path can fail with "open .env.agent:".
+lk agent create --secrets-file "D:\Meetzio\MEET-AI\.env.agent" .
+
+# Subsequent deploys (after any agent code change)
+lk agent deploy
+```
+
+> **Merging a PR does NOT redeploy the agent.** Unlike Vercel, LiveKit Cloud only
+> updates the agent when you run `lk agent deploy`. Always redeploy after changing
+> `src/agents/meeting-agent.ts`.
+
+**4. Check it's live:**
+
+```powershell
+lk agent status                       # Status: Running, note the Version + Deployed At
+lk agent logs --log-type deploy       # worker stdout, incl. [Agent] … lines when a job runs
+```
 
 `lk agent create` generates a `livekit.toml` (contains your project-specific
-agent id/subdomain) — commit it when it appears so future deploys are
-reproducible.
+agent id/subdomain) — commit it so future deploys are reproducible.
 
 ## Notes
 
