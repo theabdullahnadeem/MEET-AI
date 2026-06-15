@@ -25,8 +25,8 @@ export const CallActive = ({ meetingName }: Props) => {
   );
 
   return (
-    <div className="flex flex-col justify-between p-4 h-full text-white">
-      <div className="bg-[#101213] rounded-full p-4 flex items-center gap-4">
+    <div className="flex flex-col gap-4 p-4 h-full overflow-hidden text-white">
+      <div className="shrink-0 bg-[#101213] rounded-full p-4 flex items-center gap-4">
         <Link
           href="/"
           className="flex items-center justify-center p-1 bg-white/10 rounded-full w-fit h-fit"
@@ -35,11 +35,11 @@ export const CallActive = ({ meetingName }: Props) => {
         </Link>
         <h4 className="text-base">{meetingName}</h4>
       </div>
-      <GridLayout tracks={tracks} className="flex-1">
+      <GridLayout tracks={tracks} className="flex-1 min-h-0">
         <ParticipantTile />
       </GridLayout>
       <RoomAudioRenderer />
-      <div className="bg-[#101213] rounded-full px-4">
+      <div className="shrink-0 bg-[#101213] rounded-full px-4">
         <ControlBar
           controls={{
             camera: true,
