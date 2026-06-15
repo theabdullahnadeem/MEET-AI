@@ -20,9 +20,13 @@ interface RoomMeta {
 export default defineAgent({
   entry: async (ctx: JobContext) => {
     // Room metadata is set when the meeting is created (see meeting.create).
+    // Read it from the dispatch job info — `ctx.room` is an unconnected stub
+    // until `ctx.connect()`, so `ctx.room.metadata` is empty at this point.
+    // `ctx.job.room.metadata` carries the room metadata at dispatch time.
     // Guard against an empty string — JSON.parse("") throws.
-    const metadata: RoomMeta = ctx.room.metadata
-      ? (JSON.parse(ctx.room.metadata) as RoomMeta)
+    const rawMetadata = ctx.job.room?.metadata ?? "";
+    const metadata: RoomMeta = rawMetadata
+      ? (JSON.parse(rawMetadata) as RoomMeta)
       : {};
 
     const { meetingId, agentId, agentName, agentInstructions } = metadata;
