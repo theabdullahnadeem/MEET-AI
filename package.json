@@ -23,6 +23,7 @@
     "@livekit/agents-plugin-openai": "^1.4.5",
     "@livekit/components-react": "^2.9.21",
     "@livekit/components-styles": "^1.2.0",
+    "@livekit/protocol": "^1.46.6",
     "@neondatabase/serverless": "^1.0.2",
     "@polar-sh/better-auth": "^1.6.4",
     "@polar-sh/sdk": "^0.42.5",
