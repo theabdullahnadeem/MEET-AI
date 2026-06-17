@@ -15,6 +15,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1070.0",
     "@dicebear/collection": "^9.3.0",
     "@dicebear/core": "^9.3.0",
     "@hookform/resolvers": "^5.2.2",
