@@ -6,7 +6,9 @@ import { LiveKitRoom } from "@livekit/components-react";
 
 import "@livekit/components-styles";
 
-import { CallUI } from "./call-ui";
+import { CallLobby, type LobbyChoices } from "./call-lobby";
+import { CallActive } from "./call-active";
+import { CallEnded } from "./call-ended";
 
 interface Props {
   meetingId: string;
@@ -19,6 +21,11 @@ interface Props {
 export const CallConnect = ({ meetingId, meetingName }: Props) => {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [show, setShow] = useState<"lobby" | "call" | "ended">("lobby");
+  const [choices, setChoices] = useState<LobbyChoices>({
+    audioEnabled: true,
+    videoEnabled: true,
+  });
 
   useEffect(() => {
     let isIgnore = false;
@@ -64,17 +71,35 @@ export const CallConnect = ({ meetingId, meetingName }: Props) => {
     );
   }
 
+  if (show === "ended") {
+    return <CallEnded />;
+  }
+
+  // Lobby is rendered outside <LiveKitRoom>, so we don't connect to the room
+  // (and the agent isn't dispatched) until the user clicks "Join Meeting".
+  if (show === "lobby") {
+    return (
+      <CallLobby
+        onJoin={(nextChoices) => {
+          setChoices(nextChoices);
+          setShow("call");
+        }}
+      />
+    );
+  }
+
   return (
     <LiveKitRoom
       token={token}
       serverUrl={process.env.NEXT_PUBLIC_LIVEKIT_URL!}
       connect={true}
-      audio={true}
-      video={true}
+      audio={choices.audioEnabled}
+      video={choices.videoEnabled}
       data-lk-theme="default"
       className="h-full"
+      onDisconnected={() => setShow("ended")}
     >
-      <CallUI meetingName={meetingName} />
+      <CallActive meetingName={meetingName} />
     </LiveKitRoom>
   );
 };

@@ -1,26 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { LogInIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
-  useLocalParticipant,
-  TrackToggle,
-  VideoTrack,
-} from "@livekit/components-react";
-import { Track } from "livekit-client";
+  LogInIcon,
+  MicIcon,
+  MicOffIcon,
+  VideoIcon,
+  VideoOffIcon,
+} from "lucide-react";
+import { usePreviewTracks } from "@livekit/components-react";
+import { LocalVideoTrack, Track } from "livekit-client";
 
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { generateAvatarUri } from "@/lib/avatar";
 
-interface Props {
-  onJoin: () => void;
+export interface LobbyChoices {
+  audioEnabled: boolean;
+  videoEnabled: boolean;
 }
 
+interface Props {
+  onJoin: (choices: LobbyChoices) => void;
+}
+
+// Pre-join screen. This is intentionally rendered OUTSIDE of <LiveKitRoom> so
+// the user is NOT connected to the room yet — the AI agent only dispatches once
+// a participant actually connects, which now happens when "Join Meeting" is
+// clicked (not while the user is still setting up here). usePreviewTracks gives
+// a local camera/mic preview without any server connection and releases the
+// devices when this component unmounts.
 export const CallLobby = ({ onJoin }: Props) => {
   const { data } = authClient.useSession();
-  const { localParticipant, cameraTrack, isCameraEnabled } =
-    useLocalParticipant();
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const videoEl = useRef<HTMLVideoElement>(null);
+
+  const tracks = usePreviewTracks({
+    audio: audioEnabled,
+    video: videoEnabled,
+  });
+
+  const videoTrack = tracks?.find(
+    (track): track is LocalVideoTrack => track.kind === Track.Kind.Video,
+  );
+
+  useEffect(() => {
+    const el = videoEl.current;
+    if (videoTrack && el) {
+      videoTrack.attach(el);
+      return () => {
+        videoTrack.detach(el);
+      };
+    }
+  }, [videoTrack]);
 
   const avatarUrl =
     data?.user.image ??
@@ -37,14 +71,13 @@ export const CallLobby = ({ onJoin }: Props) => {
             </p>
           </div>
           <div className="w-64 h-48 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
-            {cameraTrack && isCameraEnabled ? (
-              <VideoTrack
-                trackRef={{
-                  participant: localParticipant,
-                  publication: cameraTrack,
-                  source: Track.Source.Camera,
-                }}
+            {videoTrack && videoEnabled ? (
+              <video
+                ref={videoEl}
                 className="w-full h-full object-cover"
+                autoPlay
+                muted
+                playsInline
               />
             ) : (
               // eslint-disable-next-line @next/next/no-img-element
@@ -56,14 +89,30 @@ export const CallLobby = ({ onJoin }: Props) => {
             )}
           </div>
           <div className="flex gap-x-2">
-            <TrackToggle source={Track.Source.Microphone} />
-            <TrackToggle source={Track.Source.Camera} />
+            <Button
+              type="button"
+              variant={audioEnabled ? "secondary" : "outline"}
+              size="icon"
+              onClick={() => setAudioEnabled((v) => !v)}
+              aria-label={audioEnabled ? "Mute microphone" : "Unmute microphone"}
+            >
+              {audioEnabled ? <MicIcon /> : <MicOffIcon />}
+            </Button>
+            <Button
+              type="button"
+              variant={videoEnabled ? "secondary" : "outline"}
+              size="icon"
+              onClick={() => setVideoEnabled((v) => !v)}
+              aria-label={videoEnabled ? "Turn off camera" : "Turn on camera"}
+            >
+              {videoEnabled ? <VideoIcon /> : <VideoOffIcon />}
+            </Button>
           </div>
           <div className="flex gap-x-2 justify-between w-full">
             <Button asChild variant="ghost">
               <Link href="/meetings">Cancel</Link>
             </Button>
-            <Button onClick={onJoin}>
+            <Button onClick={() => onJoin({ audioEnabled, videoEnabled })}>
               <LogInIcon />
               Join Meeting
             </Button>
