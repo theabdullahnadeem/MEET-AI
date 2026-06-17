@@ -1,17 +1,49 @@
 import { NextRequest, NextResponse } from "next/server";
-import { WebhookReceiver } from "livekit-server-sdk";
+import {
+  EncodedFileOutput,
+  S3Upload,
+  WebhookReceiver,
+} from "livekit-server-sdk";
 import { ParticipantInfo_Kind } from "@livekit/protocol";
 import { and, eq } from "drizzle-orm";
 
 import { db } from "@/db";
 import { meetings } from "@/db/schema";
 import { inngest } from "@/inngest/client";
+import { livekitEgressClient } from "@/lib/livekit";
 import { MeetingStatus } from "@/constants";
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
   process.env.LIVEKIT_API_SECRET!,
 );
+
+// Record the room to Cloudflare R2 (S3-compatible). The file path is
+// deterministic so egress_ended can reconstruct the public URL.
+async function startRecording(roomName: string) {
+  try {
+    await livekitEgressClient.startRoomCompositeEgress(
+      roomName,
+      new EncodedFileOutput({
+        filepath: `recordings/${roomName}.mp4`,
+        output: {
+          case: "s3",
+          value: new S3Upload({
+            accessKey: process.env.R2_ACCESS_KEY_ID!,
+            secret: process.env.R2_SECRET_ACCESS_KEY!,
+            bucket: process.env.R2_BUCKET!,
+            endpoint: process.env.R2_ENDPOINT!,
+            region: "auto",
+          }),
+        },
+      }),
+    );
+    console.log(`[livekit-webhook] Started recording for room: ${roomName}`);
+  } catch (err) {
+    // Non-fatal — the meeting continues without a recording.
+    console.error("[livekit-webhook] Failed to start egress:", err);
+  }
+}
 
 // The LiveKit room is named after the meeting id (see meeting.create).
 export async function POST(req: NextRequest) {
@@ -48,7 +80,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "skipped: non-human participant" });
     }
 
-    await db
+    const [activated] = await db
       .update(meetings)
       .set({ status: MeetingStatus.ACTIVE, startedAt: new Date() })
       .where(
@@ -56,7 +88,14 @@ export async function POST(req: NextRequest) {
           eq(meetings.id, roomName),
           eq(meetings.status, MeetingStatus.UPCOMING),
         ),
-      );
+      )
+      .returning();
+
+    // The update only changes a row on the FIRST human join (status was
+    // upcoming), so recording starts exactly once per meeting.
+    if (activated) {
+      await startRecording(roomName);
+    }
 
     return NextResponse.json({ status: "ok" });
   }
@@ -89,6 +128,23 @@ export async function POST(req: NextRequest) {
           transcriptUrl: meeting.transcriptUrl,
         },
       });
+    }
+
+    return NextResponse.json({ status: "ok" });
+  }
+
+  // Recording finished and uploaded → save its public URL on the meeting.
+  if (event.event === "egress_ended") {
+    const egressRoom = event.egressInfo?.roomName;
+    const produced = (event.egressInfo?.fileResults?.length ?? 0) > 0;
+
+    if (egressRoom && produced) {
+      await db
+        .update(meetings)
+        .set({
+          recordingUrl: `${process.env.R2_PUBLIC_URL}/recordings/${egressRoom}.mp4`,
+        })
+        .where(eq(meetings.id, egressRoom));
     }
 
     return NextResponse.json({ status: "ok" });

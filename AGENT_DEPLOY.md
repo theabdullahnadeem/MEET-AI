@@ -44,10 +44,18 @@ lk agent create
 lk agent deploy
 ```
 
-Set these as secrets in the LiveKit Cloud agent config (NOT committed):
+Set these as secrets in the LiveKit Cloud agent config (NOT committed). As of
+PR 6 the agent also writes the transcript to R2 and records its URL in the DB,
+so it needs the R2 credentials and `DATABASE_URL` too:
 
 ```
 OPENAI_API_KEY=sk-...
+DATABASE_URL=postgresql://...
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=meet-ai-storage
+R2_PUBLIC_URL=https://pub-xxxx.r2.dev
 ```
 
 `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are injected
