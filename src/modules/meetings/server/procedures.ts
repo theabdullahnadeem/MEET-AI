@@ -12,7 +12,6 @@ import {
 } from "@/constants";
 import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
-import { streamVideo } from "@/lib/stream-video";
 import { livekitRoomService } from "@/lib/livekit";
 import { generateAvatarUri } from "@/lib/avatar";
 import JSONL from "jsonl-parse-stringify";
@@ -188,28 +187,6 @@ export const meetingsRouter = createTRPCRouter({
         })
         .returning();
 
-        const call = streamVideo.video.call("default", createdMeeting.id);
-        await call.create({
-          data:{
-            created_by_id: ctx.auth.user.id,
-            custom:{
-              meetingId: createdMeeting.id,
-              meetingName: createdMeeting.name,
-            },
-            settings_override:{
-              transcription: {
-                language: "en",
-                mode: "auto-on",
-                closed_caption_mode: "auto-on",
-              },
-              recording:{
-                mode: "auto-on",
-                quality: "1080p",
-              }
-            }
-          }
-        });
-
         const [existingAgent] = await db
         .select()
         .from(agents)
@@ -221,18 +198,6 @@ export const meetingsRouter = createTRPCRouter({
             message: "Agent not found",
           });
         }
-
-        await streamVideo.upsertUsers([
-          {
-            id: existingAgent.id,
-            name: existingAgent.name,
-            role:"user",
-            image: generateAvatarUri({
-              seed: existingAgent.name,
-              variant: "botttsNeutral"
-            }),
-          },
-        ])
 
         await livekitRoomService.createRoom({
           name: createdMeeting.id,
