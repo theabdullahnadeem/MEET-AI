@@ -152,11 +152,33 @@ Network. CSP report‑only shows no blocking before you enforce.
    const { success } = await ratelimit.limit(ipOrUserId);
    if (!success) return NextResponse.json({ error: "Too many requests" }, { status: 429 });
    ```
-2. **Timeout + size cap** on every server‑side transcript fetch:
+2. **Timeout + size cap** on every server‑side transcript fetch. `content-length` is optional and
+   can be missing or wrong (e.g. chunked responses), so it can't be the enforcement point — count
+   bytes **as the body streams** and abort once over the cap:
    ```ts
+   const MAX = 5_000_000; // 5 MB
    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-   const len = Number(res.headers.get("content-length") ?? 0);
-   if (len > 5_000_000) throw new Error("transcript too large");
+
+   // Cheap fast-reject only when the server is honest about size.
+   if (Number(res.headers.get("content-length") ?? 0) > MAX) {
+     throw new Error("transcript too large");
+   }
+
+   // Real enforcement: tally bytes while reading, cancel the stream once over the limit.
+   const reader = res.body!.getReader();
+   const chunks: Uint8Array[] = [];
+   let received = 0;
+   for (;;) {
+     const { done, value } = await reader.read();
+     if (done) break;
+     received += value.length;
+     if (received > MAX) {
+       await reader.cancel();
+       throw new Error("transcript too large");
+     }
+     chunks.push(value);
+   }
+   const text = Buffer.concat(chunks, received).toString("utf8"); // then JSONL.parse(text)
    ```
 
 **Why it is non‑breaking:** legitimate users are far below any sane limit; webhooks from
