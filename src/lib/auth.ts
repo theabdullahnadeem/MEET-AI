@@ -5,8 +5,12 @@ import * as schema from "@/db/schema";
 import {polar, checkout, portal} from "@polar-sh/better-auth"
 import { polarClient } from "./polar";
 
+if (!process.env.BETTER_AUTH_SECRET) {
+    throw new Error("BETTER_AUTH_SECRET is not set");
+}
 
 export const auth = betterAuth({
+    secret: process.env.BETTER_AUTH_SECRET,
     plugins: [polar({
         client: polarClient,
         createCustomerOnSignUp: true,
