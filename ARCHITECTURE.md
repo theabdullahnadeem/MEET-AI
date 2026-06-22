@@ -172,8 +172,8 @@ This is the spine of the app. Follow a single meeting through it.
 ### 6.1 Create (status `upcoming`)
 `meetings-form` → `meeting.create` mutation:
 1. Insert the meeting row (`userId`, `agentId`, `name`, status `upcoming`).
-2. Create the **Stream Video** call (legacy, still present) **and** the **LiveKit room** named
-   after the meeting id, with the agent's config in the room metadata.
+2. Create the **LiveKit room** named after the meeting id, with the agent's config in the room
+   metadata.
 3. Premium‑gated by `premiumProcedure("meetings")`.
 
 ### 6.2 Join (status → `active`)
@@ -264,6 +264,8 @@ Trimmed during the migration to **only** handle `message.new`: when a user messa
 completed‑meeting chat, it loads the meeting + agent, builds a prompt grounded in the meeting
 **summary** + the agent instructions + recent history, calls GPT‑4o, and posts the reply back
 into the Stream Chat channel as the agent. (All the old Stream **Video** handlers were removed.)
+The webhook's signature is still verified with the Stream **Video** SDK client
+(`streamVideo.verifyWebhook`) — the one remaining use of that client.
 
 ---
 
@@ -299,7 +301,9 @@ security report F‑03 for the recommended move to authenticated, pre‑signed U
 
 ## 11. Post‑meeting chat (Stream Chat)
 
-Unrelated to Stream **Video** (which was removed). After a meeting completes, the **Chat** tab
+Unrelated to Stream **Video** (which LiveKit replaced for live calls — the old Stream Video call
+creation has been removed from `meeting.create`; the `streamVideo` client now survives only to
+verify the Stream webhook signature, see §8.2). After a meeting completes, the **Chat** tab
 opens a Stream Chat channel (`meeting.generateChatToken` mints the user's token). Messages the
 user sends trigger the `/api/webhook` `message.new` handler, which replies as the agent using
 the meeting summary as grounding — effectively "chat with your meeting."
@@ -366,7 +370,7 @@ room_finished ─▶ Inngest summariser ─▶ GPT-4o ─▶ summary + status=co
 | `NEXT_PUBLIC_LIVEKIT_URL` | browser LiveKit connect (build‑time inlined) | Vercel |
 | `R2_ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY/BUCKET/PUBLIC_URL` | Egress (Vercel) + transcript upload (agent) | **both** Vercel + agent |
 | `NEXT_PUBLIC_STREAM_CHAT_API_KEY` / `STREAM_CHAT_SECRET` | Stream Chat | Vercel |
-| `NEXT_PUBLIC_STREAM_API_KEY` / `STREAM_VIDEO_SECRET` | legacy Stream Video (being removed) | Vercel |
+| `NEXT_PUBLIC_STREAM_API_KEY` / `STREAM_VIDEO_SECRET` | Stream **Video** SDK client — now only verifies the Stream webhook signature (`/api/webhook`) | Vercel |
 | `POLAR_ACCESS_TOKEN` | billing | Vercel |
 | `NEXT_PUBLIC_APP_URL` | tRPC client base URL | Vercel |
 

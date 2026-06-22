@@ -75,10 +75,16 @@ Each PR is self‑contained and non‑breaking for the current single‑user flo
 
 ### MU‑3 — Knock‑to‑join (the core admission flow)
 **Schema:** new table `meeting_join_requests` — `{ id, meetingId, userId, status:
-'pending'|'approved'|'denied', createdAt }` (Drizzle migration).
+'pending'|'approved'|'denied', createdAt }` (Drizzle migration). Add a **partial unique index**
+on `(meetingId, userId)` scoped to active rows (`WHERE status <> 'denied'`) so a user can have at
+most one live request per meeting — preventing duplicate pending rows and stale-row ambiguity in
+`admit()`/`deny()`.
 **Flow:**
 1. A non‑host opening the call page sees an **"Ask to join"** waiting screen and calls a
-   `requestToJoin(meetingId)` tRPC mutation, creating a `pending` row.
+   `requestToJoin(meetingId)` tRPC mutation. The mutation first looks up an existing active
+   (`pending`/`approved`) request for that `(meetingId, userId)` and **returns/reuses it** if
+   present; otherwise it creates a new `pending` row. (The partial unique index is the
+   database-level backstop against races.)
 2. The **host** (already in the call) polls pending requests (React Query `refetchInterval`) and
    sees "X wants to join" with **Admit / Deny**.
 3. `admit(requestId)` (host‑only) marks the row `approved`. The guest's page polls its own status,
@@ -153,6 +159,10 @@ improve communication.
   (sentiment per speaker, talk‑time from timestamps) and store metrics on the meeting; render a
   dashboard tab. Lowest‑risk of the proposed set (offline, additive).
 - **Dependencies:** richer transcript timing (per‑utterance start/stop), an analytics table.
+- **Blocked by speaker attribution:** per‑speaker sentiment and talk‑time distribution require
+  real per‑utterance speaker ids, which `@livekit/agents` does **not** yet expose (see A.5). Until
+  it does, scope B.4 to **aggregate, whole‑meeting** tone/engagement only — per‑speaker breakdowns
+  are deferred to upstream `speakerId` support.
 
 ### B.5 Automated Action‑Item Delegation & Follow‑up  · *Proposed*
 The AI extracts action items, assigns them based on detected roles, and follows up via
@@ -161,6 +171,10 @@ Slack/Email/Stream Chat before the next sync.
   B.2 roles; follow‑up uses scheduled jobs + connectors. The post‑meeting Stream Chat assistant
   already shows the "act on a finished meeting" pattern.
 - **Dependencies:** B.2 (roles), connectors (Slack/Email), a scheduler.
+- **Limited by speaker attribution:** role‑based assignment via B.2 participant metadata works at
+  the participant level, but pinning an extracted action item to *who actually said it* needs
+  per‑utterance speaker ids (the same A.5 `@livekit/agents` limitation). Until `speakerId` lands,
+  delegate by explicit role assignment rather than inferred-from-transcript attribution.
 
 ### B.6 Cross‑Language Real‑time Translation  · *Proposed*
 The agent acts as a real‑time translator so participants can speak their native language with
@@ -172,7 +186,8 @@ seamless audio/subtitle translation for others.
 
 ## B.7 Suggested order
 1. **Part A** (multi‑user) — unblocks everything below.
-2. **B.2 Role Awareness** then **B.4 Sentiment/Engagement** — cheap, additive, high signal.
+2. **B.2 Role Awareness** then **B.4 Sentiment/Engagement** — cheap, additive, high signal
+   (B.4's per‑speaker metrics wait on `speakerId`; ship the aggregate version first — see A.5).
 3. **B.1 Personal AI Memory** and **B.5 Action‑Item Delegation** — bigger subsystems.
 4. **B.3 Fact‑Checking** and **B.6 Translation** — most infrastructure‑heavy; do last.
 
