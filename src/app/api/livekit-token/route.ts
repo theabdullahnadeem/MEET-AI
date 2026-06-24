@@ -6,6 +6,7 @@ import { meetings } from "@/db/schema";
 import { headers } from "next/headers";
 import { createLiveKitToken } from "@/lib/livekit";
 import { generateAvatarUri } from "@/lib/avatar";
+import { rateLimitOk } from "@/lib/ratelimit";
 
 export async function GET(req: NextRequest) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -17,6 +18,11 @@ export async function GET(req: NextRequest) {
   const roomName = req.nextUrl.searchParams.get("room");
   if (!roomName) {
     return NextResponse.json({ error: "Missing room parameter" }, { status: 400 });
+  }
+
+  // SEC-4 / F-04: rate-limit per user (no-op until Upstash is configured).
+  if (!(await rateLimitOk("token", session.user.id))) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
   // F-01 / SEC-1: authorize the caller against the meeting before issuing a token.

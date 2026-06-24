@@ -12,6 +12,7 @@ import { meetings } from "@/db/schema";
 import { inngest } from "@/inngest/client";
 import { livekitEgressClient } from "@/lib/livekit";
 import { MeetingStatus } from "@/constants";
+import { rateLimitOk, clientIp } from "@/lib/ratelimit";
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
@@ -47,6 +48,11 @@ async function startRecording(roomName: string) {
 
 // The LiveKit room is named after the meeting id (see meeting.create).
 export async function POST(req: NextRequest) {
+  // SEC-4 / F-04: rate-limit per IP (no-op until Upstash is configured).
+  if (!(await rateLimitOk("webhook", clientIp(req)))) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const body = await req.text();
   const authHeader = req.headers.get("Authorization");
 

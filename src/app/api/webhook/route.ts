@@ -9,6 +9,7 @@ import { agents, meetings } from "@/db/schema";
 import { streamVideo } from "@/lib/stream-video";
 import { generateAvatarUri } from "@/lib/avatar";
 import { streamChat } from "@/lib/stream-chat";
+import { rateLimitOk, clientIp } from "@/lib/ratelimit";
 
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -20,6 +21,11 @@ function verifySignatureWithSdk(body: string, signature: string): boolean {
 // LiveKit webhook at /api/livekit-webhook — this endpoint only serves the
 // post-meeting Stream Chat assistant (`message.new`).
 export async function POST(req: NextRequest) {
+  // SEC-4 / F-04: rate-limit per IP (no-op until Upstash is configured).
+  if (!(await rateLimitOk("webhook", clientIp(req)))) {
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   const signature = req.headers.get("x-signature");
   const apiKey = req.headers.get("x-api-key");
 
