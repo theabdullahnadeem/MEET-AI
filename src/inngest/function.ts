@@ -4,6 +4,7 @@ import { inngest } from "@/inngest/client";
 import { StreamTrancriptItem } from "@/modules/meetings/types";
 import { eq, inArray } from "drizzle-orm";
 import JSONL from "jsonl-parse-stringify"
+import { fetchTranscriptText } from "@/lib/fetch-transcript";
 
 import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
 
@@ -37,7 +38,7 @@ export const meetingsProcessing = inngest.createFunction(
   { event: "meetings/processing" },
   async ({ event, step }) => {
     const response = await step.run("fetch-transcript", async () => {
-      return fetch(event.data.transcriptUrl).then(res => res.text())
+      return fetchTranscriptText(event.data.transcriptUrl)
     })
 
     const transcript = await step.run("parse-transcript", async () => {

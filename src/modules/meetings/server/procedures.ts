@@ -14,6 +14,7 @@ import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
 import { livekitRoomService } from "@/lib/livekit";
 import { generateAvatarUri } from "@/lib/avatar";
+import { fetchTranscriptText } from "@/lib/fetch-transcript";
 import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
@@ -72,10 +73,9 @@ export const meetingsRouter = createTRPCRouter({
       return [];
     }
 
-    const transcript = await fetch(existingMeeting.transcriptUrl)
-    .then(res => res.text())
+    const transcript = await fetchTranscriptText(existingMeeting.transcriptUrl)
     .then(text => JSONL.parse<StreamTrancriptItem>(text))
-    .catch(err => {
+    .catch(() => {
       return [];
     });
     
