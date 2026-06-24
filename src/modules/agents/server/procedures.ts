@@ -4,13 +4,14 @@ import { createTRPCRouter, premiumProcedure, protectedProcedure } from "@/trpc/i
 import { agentsInsertSchema, agentsUpdateSchema } from "../schemas";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, getTableColumns, sql, and, ilike, desc, count } from "drizzle-orm";
+import { eq, getTableColumns, and, ilike, desc, count } from "drizzle-orm";
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_PAGE,
   MAX_PAGE_SIZE,
   MIN_PAGE_SIZE,
 } from "@/constants";
+import { escapeLike } from "@/lib/utils";
 
 export const agentRouter = createTRPCRouter({
   update: protectedProcedure
@@ -99,7 +100,7 @@ export const agentRouter = createTRPCRouter({
         .where(
           and(
             eq(agents.userId, ctx.auth.user.id),
-            search ? ilike(agents.name, `%${search}%`) : undefined,
+            search ? ilike(agents.name, `%${escapeLike(search)}%`) : undefined,
           ),
         )
         .orderBy(desc(agents.createdAt), desc(agents.id))
@@ -114,7 +115,7 @@ export const agentRouter = createTRPCRouter({
         .where(
           and(
             eq(agents.userId, ctx.auth.user.id),
-            search ? ilike(agents.name, `%${search}%`) : undefined,
+            search ? ilike(agents.name, `%${escapeLike(search)}%`) : undefined,
           ),
         );
 
