@@ -13,3 +13,12 @@ export function formatDuration(seconds: number){
     units: ["h", "m", "s"],
   });
 }
+
+/**
+ * Escape LIKE/ILIKE metacharacters (%, _, \) so user-supplied search text is
+ * matched literally instead of as a wildcard pattern (F-08). PostgreSQL uses
+ * backslash as the default LIKE escape character.
+ */
+export function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (c) => `\\${c}`);
+}

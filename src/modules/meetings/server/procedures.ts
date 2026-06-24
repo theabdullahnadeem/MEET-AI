@@ -18,6 +18,7 @@ import { fetchTranscriptText } from "@/lib/fetch-transcript";
 import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
+import { escapeLike } from "@/lib/utils";
 
 export const meetingsRouter = createTRPCRouter({
   cancelMeeting: protectedProcedure
@@ -272,7 +273,7 @@ export const meetingsRouter = createTRPCRouter({
         .where(
           and(
             eq(meetings.userId, ctx.auth.user.id),
-            search ? ilike(meetings.name, `%${search}%`) : undefined,
+            search ? ilike(meetings.name, `%${escapeLike(search)}%`) : undefined,
             agentId ? eq(meetings.agentId, agentId) : undefined,
             status ? eq(meetings.status, status) : undefined,
           ),
@@ -290,7 +291,7 @@ export const meetingsRouter = createTRPCRouter({
         .where(
           and(
             eq(meetings.userId, ctx.auth.user.id),
-            search ? ilike(meetings.name, `%${search}%`) : undefined,
+            search ? ilike(meetings.name, `%${escapeLike(search)}%`) : undefined,
             agentId ? eq(meetings.agentId, agentId) : undefined,
             status ? eq(meetings.status, status) : undefined,
           ),
