@@ -193,6 +193,37 @@ seamless audio/subtitle translation for others.
 
 ---
 
+# Known issues / bugs
+
+Tracked defects in the current flow, to fix before/around Part A. These complement the
+product‑level fixes in `ROADMAP.md` (Stage 0–1).
+
+### K.1 Meeting status doesn't update without a manual refresh
+When a meeting ends, the LiveKit `room_finished` webhook flips it `active → processing`, and the
+Inngest summariser later flips `processing → completed` — but the meeting detail page does **not**
+reflect either transition until the user **manually refreshes**. The page reads status through
+React Query with no `refetchInterval` or realtime subscription, so the client cache goes stale.
+- **Fix options:** add a `refetchInterval` to the meeting `getOne` query while status is `active`
+  or `processing` (simplest), or push status changes over a realtime channel for instant updates.
+  Aligns with `ROADMAP.md` Stage 0 "Fix 2 — Summarisation Feedback" and Stage 1.1 "Real‑Time
+  Frontend Updates".
+- **Files:** `src/modules/meetings/server/procedures.ts` (`getOne`) and the meeting‑detail view
+  (`meeting-id-view` + the per‑status state components).
+
+### K.2 Agent join timing — should join at a natural time (not too late, not too early)
+The AI agent should enter the call at a **normal** moment: late enough that it isn't added before
+the human is actually in the room, but not so late that there's an awkward silence after the
+meeting starts. Today the agent is dispatched on participant connect (automatic dispatch) and the
+timing can feel off in either direction.
+- **Goal:** tune dispatch/greeting so the agent is reliably present shortly after the first human
+  joins — no early phantom join, no long lag.
+- **Investigate:** dispatch + connect timing in `src/agents/meeting-agent.ts` (`entry` →
+  `ctx.connect()` → `session.start`) and the lobby/connect timing on the client
+  (`src/modules/call/ui/components/call-connect.tsx`). The `fix/call-prejoin-agent-timing` branch
+  is related prior art.
+
+---
+
 ## Cross‑references
 - `ARCHITECTURE.md` — current system design and flows.
 - `SECURITY_FIX_PLAN.md` — F‑01 (token authz, = MU‑1) and F‑03 (media privacy) are prerequisites.
