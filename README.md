@@ -95,7 +95,7 @@ MEET-AI solves this by embedding an intelligent voice agent directly into the vi
 - **LiveKit Components React** — in-call video UI
 
 ### Backend
-- **Next.js App Router** — API routes and server logic
+- **Next.js App Router** — API routes and server logic 
 - **tRPC** — end-to-end typed RPC
 - **Drizzle ORM** — schema, queries, and migrations
 - **Neon** — serverless PostgreSQL
