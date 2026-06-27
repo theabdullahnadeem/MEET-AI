@@ -10,6 +10,7 @@ import { streamVideo } from "@/lib/stream-video";
 import { generateAvatarUri } from "@/lib/avatar";
 import { streamChat } from "@/lib/stream-chat";
 import { rateLimitOk, clientIp } from "@/lib/ratelimit";
+import { isNewWebhookEvent } from "@/lib/webhook-idempotency";
 
 const openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -65,6 +66,12 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     };
+
+    // F-07: skip if this message was already processed (avoids duplicate AI replies on retries).
+    const messageId = event.message?.id;
+    if (messageId && !(await isNewWebhookEvent(`stream:${messageId}`))) {
+      return NextResponse.json({ status: "duplicate" });
+    }
 
     const [existingMeeting] = await db
     .select()

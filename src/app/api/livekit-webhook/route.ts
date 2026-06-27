@@ -13,6 +13,7 @@ import { inngest } from "@/inngest/client";
 import { livekitEgressClient } from "@/lib/livekit";
 import { MeetingStatus } from "@/constants";
 import { rateLimitOk, clientIp } from "@/lib/ratelimit";
+import { isNewWebhookEvent } from "@/lib/webhook-idempotency";
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
@@ -72,6 +73,12 @@ export async function POST(req: NextRequest) {
       { error: "Invalid webhook signature" },
       { status: 401 },
     );
+  }
+
+  // F-07: idempotency — a replayed/retried webhook becomes a no-op (the handlers
+  // below are also status-guarded). Fails open if the dedupe store is unavailable.
+  if (event.id && !(await isNewWebhookEvent(`livekit:${event.id}`))) {
+    return NextResponse.json({ status: "duplicate" });
   }
 
   const roomName = event.room?.name;

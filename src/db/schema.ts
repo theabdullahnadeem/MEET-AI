@@ -114,6 +114,13 @@ export const meetings = pgTable("meetings",{
     .notNull().defaultNow(),
 })
 
+// F-07: webhook idempotency — one row per processed provider event id, so a
+// replayed/retried webhook is a no-op. Ids are namespaced "<provider>:<eventId>".
+export const webhookEvents = pgTable("webhook_events", {
+  id: text("id").primaryKey(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
