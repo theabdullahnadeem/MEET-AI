@@ -294,8 +294,11 @@ One S3‑compatible **R2** bucket holds both artifacts at deterministic keys:
 
 R2 was chosen for S3 compatibility (works directly with both Egress and the AWS SDK) and **zero
 egress/bandwidth fees**. `R2_*` env vars must exist in **both** runtimes (Vercel for Egress;
-the agent for the transcript upload). Public read is currently via the r2.dev domain (see the
-security report F‑03 for the recommended move to authenticated, pre‑signed URLs).
+the agent for the transcript upload). The bucket is **private** (SEC‑5/F‑03): the DB stores
+object **keys**, server reads presign their own access (`src/lib/r2.ts`), and the recording
+player goes through the authenticated `GET /api/media/recording?meetingId=…` route, which
+checks meeting ownership and 302‑redirects to a short‑lived pre‑signed URL. Legacy rows that
+still store full public URLs are resolved to keys transparently (`r2KeyFromStored`).
 
 ---
 
