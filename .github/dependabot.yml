@@ -1,0 +1,16 @@
+# SEC-6 / F-06: keep dependencies patched automatically.
+# Dependabot opens PRs for vulnerable/outdated npm packages weekly; security
+# updates are always raised regardless of schedule.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      # Batch routine minor/patch noise into one PR; majors stay separate.
+      minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
