@@ -1,0 +1,56 @@
+diff --git a/node_modules/@polar-sh/better-auth/dist/index.cjs b/node_modules/@polar-sh/better-auth/dist/index.cjs
+index 0bdd4a8..1fc37fd 100644
+--- a/node_modules/@polar-sh/better-auth/dist/index.cjs
++++ b/node_modules/@polar-sh/better-auth/dist/index.cjs
+@@ -1,4 +1,4 @@
+-"use strict";
++﻿"use strict";
+ var __defProp = Object.defineProperty;
+ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+ var __getOwnPropNames = Object.getOwnPropertyNames;
+@@ -185,7 +185,7 @@ var polarClient = () => {
+ // src/plugins/portal.ts
+ var import_api2 = require("better-auth/api");
+ var import_api3 = require("better-auth/api");
+-var import_plugins = require("better-auth/plugins");
++var import_plugins = require("better-auth/api");
+ var import_zod = require("zod");
+ var portal = ({ returnUrl, theme } = {}) => (polar2) => {
+   const retUrl = returnUrl ? new URL(returnUrl) : void 0;
+@@ -417,7 +417,7 @@ var portal = ({ returnUrl, theme } = {}) => (polar2) => {
+ 
+ // src/plugins/checkout.ts
+ var import_api4 = require("better-auth/api");
+-var import_plugins2 = require("better-auth/plugins");
++var import_plugins2 = require("better-auth/api");
+ var import_zod2 = require("zod");
+ var CheckoutParams = import_zod2.z.object({
+   products: import_zod2.z.union([import_zod2.z.array(import_zod2.z.string()), import_zod2.z.string()]).optional(),
+diff --git a/node_modules/@polar-sh/better-auth/dist/index.js b/node_modules/@polar-sh/better-auth/dist/index.js
+index d2cf0d8..58c2f6d 100644
+--- a/node_modules/@polar-sh/better-auth/dist/index.js
++++ b/node_modules/@polar-sh/better-auth/dist/index.js
+@@ -1,4 +1,4 @@
+-import {
++﻿import {
+   polarClient
+ } from "./chunk-T2OMXYG3.js";
+ 
+@@ -127,7 +127,7 @@ var onUserDelete = (options) => async (user, context) => {
+ // src/plugins/portal.ts
+ import { APIError as APIError2 } from "better-auth/api";
+ import { sessionMiddleware } from "better-auth/api";
+-import { createAuthEndpoint } from "better-auth/plugins";
++import { createAuthEndpoint } from "better-auth/api";
+ import { z } from "zod";
+ var portal = ({ returnUrl, theme } = {}) => (polar2) => {
+   const retUrl = returnUrl ? new URL(returnUrl) : void 0;
+@@ -359,7 +359,7 @@ var portal = ({ returnUrl, theme } = {}) => (polar2) => {
+ 
+ // src/plugins/checkout.ts
+ import { APIError as APIError3, getSessionFromCtx } from "better-auth/api";
+-import { createAuthEndpoint as createAuthEndpoint2 } from "better-auth/plugins";
++import { createAuthEndpoint as createAuthEndpoint2 } from "better-auth/api";
+ import { z as z2 } from "zod";
+ var CheckoutParams = z2.object({
+   products: z2.union([z2.array(z2.string()), z2.string()]).optional(),
