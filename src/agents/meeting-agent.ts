@@ -131,15 +131,15 @@ export default defineAgent({
           }),
         );
 
-        const transcriptUrl = `${process.env.R2_PUBLIC_URL}/${key}`;
-
+        // SEC-5: store the object KEY — the bucket is private, and readers
+        // (getTranscript, summariser) presign their own access.
         // Relative imports so this works when run via tsx outside Next.
         const { db } = await import("../db");
         const { meetings } = await import("../db/schema");
         const { eq } = await import("drizzle-orm");
         await db
           .update(meetings)
-          .set({ transcriptUrl })
+          .set({ transcriptUrl: key })
           .where(eq(meetings.id, meetingId));
 
         console.log(`[Agent] Transcript saved for meeting: ${meetingId}`);

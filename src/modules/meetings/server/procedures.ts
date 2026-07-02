@@ -15,6 +15,7 @@ import { MeetingStatus } from "@/constants";
 import { livekitRoomService } from "@/lib/livekit";
 import { generateAvatarUri } from "@/lib/avatar";
 import { fetchTranscriptText } from "@/lib/fetch-transcript";
+import { presignR2Get, r2KeyFromStored } from "@/lib/r2";
 import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
@@ -74,7 +75,12 @@ export const meetingsRouter = createTRPCRouter({
       return [];
     }
 
-    const transcript = await fetchTranscriptText(existingMeeting.transcriptUrl)
+    // SEC-5: the bucket is private — resolve the stored reference (key or
+    // legacy public URL) and read via a short-lived presigned URL.
+    const transcript = await presignR2Get(
+      r2KeyFromStored(existingMeeting.transcriptUrl),
+    )
+    .then(url => fetchTranscriptText(url))
     .then(text => JSONL.parse<StreamTrancriptItem>(text))
     .catch(() => {
       return [];

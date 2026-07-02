@@ -5,6 +5,7 @@ import { StreamTrancriptItem } from "@/modules/meetings/types";
 import { eq, inArray } from "drizzle-orm";
 import JSONL from "jsonl-parse-stringify"
 import { fetchTranscriptText } from "@/lib/fetch-transcript";
+import { presignR2Get, r2KeyFromStored } from "@/lib/r2";
 
 import { createAgent, openai, TextMessage } from "@inngest/agent-kit";
 
@@ -41,7 +42,10 @@ export const meetingsProcessing = inngest.createFunction(
   { event: "meetings/processing" },
   async ({ event, step }) => {
     const response = await step.run("fetch-transcript", async () => {
-      return fetchTranscriptText(event.data.transcriptUrl)
+      // SEC-5: private bucket — presign the read (handles both bare keys and
+      // legacy public URLs).
+      const url = await presignR2Get(r2KeyFromStored(event.data.transcriptUrl));
+      return fetchTranscriptText(url)
     })
 
     const transcript = await step.run("parse-transcript", async () => {

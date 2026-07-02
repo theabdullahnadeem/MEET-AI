@@ -69,8 +69,10 @@ export const CompletedState = ({ data }: Props) => {
         </TabsContent>
         <TabsContent value="recording">
           <div className="bg-white rounded-lg border px-4 py-5">
+            {/* SEC-5: served via the authenticated media route (302 → short-lived
+                presigned R2 URL) instead of a permanent public bucket URL. */}
             <video
-              src={data.recordingUrl!}
+              src={`/api/media/recording?meetingId=${encodeURIComponent(data.id)}`}
               className="w-full rounded-lg"
               controls
             />

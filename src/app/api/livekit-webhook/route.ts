@@ -155,7 +155,9 @@ export async function POST(req: NextRequest) {
       await db
         .update(meetings)
         .set({
-          recordingUrl: `${process.env.R2_PUBLIC_URL}/recordings/${egressRoom}.mp4`,
+          // SEC-5: store the object KEY — the bucket is private, and reads go
+          // through /api/media/recording (presigned).
+          recordingUrl: `recordings/${egressRoom}.mp4`,
         })
         .where(eq(meetings.id, egressRoom));
     }
