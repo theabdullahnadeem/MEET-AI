@@ -35,6 +35,17 @@ export const CallConnect = ({ meetingId, meetingName }: Props) => {
         const res = await fetch(
           `/api/livekit-token?room=${encodeURIComponent(meetingId)}`,
         );
+        // MU-2: non-owners can reach this screen from a shared link, but the
+        // token endpoint is owner-only until knock-to-join (MU-3) lands —
+        // give them a clear message instead of a generic failure.
+        if (res.status === 403) {
+          if (!isIgnore) {
+            setError(
+              "You don't have access to this meeting yet. Ask the host to invite you.",
+            );
+          }
+          return;
+        }
         if (!res.ok) throw new Error("Failed to fetch token");
         const data = await res.json();
         if (!isIgnore) {

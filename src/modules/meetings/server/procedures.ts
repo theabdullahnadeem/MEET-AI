@@ -221,6 +221,32 @@ export const meetingsRouter = createTRPCRouter({
 
       return createdMeeting;
     }),
+  // MU-2: call-scoped read — deliberately NOT owner-filtered so a signed-in
+  // guest can load the call screen from a shared link (Google Meet model).
+  // Returns only what the call page needs; joining the room itself is still
+  // gated by /api/livekit-token (owner-only until MU-3 knock-to-join lands).
+  // All management procedures (getOne, update, remove, getMany) stay owner-scoped.
+  getForCall: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const [existingMeeting] = await db
+        .select({
+          id: meetings.id,
+          name: meetings.name,
+          status: meetings.status,
+        })
+        .from(meetings)
+        .where(eq(meetings.id, input.id));
+
+      if (!existingMeeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      return existingMeeting;
+    }),
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {

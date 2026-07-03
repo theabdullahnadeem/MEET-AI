@@ -24,8 +24,10 @@ const Page = async ({params}: Props) => {
     const {meetingId} = await params;
 
     const queryClient = getQueryClient();
+    // MU-2: call-scoped read (not owner-filtered) so guests can load the call
+    // screen from a shared link. Room entry stays gated by the token endpoint.
     void queryClient.prefetchQuery(
-        trpc.meeting.getOne.queryOptions({
+        trpc.meeting.getForCall.queryOptions({
             id: meetingId
         })
     );
