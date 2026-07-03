@@ -3,6 +3,7 @@ import { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "@/trpc/routers/_app";
 
 export type MeetingGetOne = inferRouterOutputs<AppRouter>["meeting"]["getOne"];
+export type MeetingGetForCall = inferRouterOutputs<AppRouter>["meeting"]["getForCall"];
 export type MeetingGetMany = inferRouterOutputs<AppRouter>["meeting"]["getMany"]["items"];
 
 export type StreamTrancriptItem = {
