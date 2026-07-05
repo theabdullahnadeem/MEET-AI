@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { agents, meetings, user } from "@/db/schema";
+import { agents, meetings, meetingJoinRequests, user } from "@/db/schema";
 import { createTRPCRouter, premiumProcedure, protectedProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
@@ -228,12 +228,13 @@ export const meetingsRouter = createTRPCRouter({
   // All management procedures (getOne, update, remove, getMany) stay owner-scoped.
   getForCall: protectedProcedure
     .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const [existingMeeting] = await db
         .select({
           id: meetings.id,
           name: meetings.name,
           status: meetings.status,
+          userId: meetings.userId,
         })
         .from(meetings)
         .where(eq(meetings.id, input.id));
@@ -245,7 +246,202 @@ export const meetingsRouter = createTRPCRouter({
         });
       }
 
-      return existingMeeting;
+      // MU-3: the host UI (admit/deny panel) needs to know it's the host —
+      // expose a computed flag rather than leaking the owner's user id.
+      return {
+        id: existingMeeting.id,
+        name: existingMeeting.name,
+        status: existingMeeting.status,
+        isOwner: existingMeeting.userId === ctx.auth.user.id,
+      };
+    }),
+  // MU-3: knock-to-join. A signed-in non-owner asks to join; the host admits
+  // or denies from inside the call. Only an `approved` row unlocks
+  // /api/livekit-token (and /api/media/recording) for non-owners.
+  requestToJoin: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id, userId: meetings.userId })
+        .from(meetings)
+        .where(eq(meetings.id, input.meetingId));
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Meeting not found",
+        });
+      }
+
+      // The owner never needs a request.
+      if (meeting.userId === ctx.auth.user.id) {
+        return { id: null, status: "approved" as const };
+      }
+
+      // Reuse an existing live request (pending or approved) — one knock per
+      // user per meeting. A previously denied user may ask again.
+      const [existing] = await db
+        .select({ id: meetingJoinRequests.id, status: meetingJoinRequests.status })
+        .from(meetingJoinRequests)
+        .where(
+          and(
+            eq(meetingJoinRequests.meetingId, input.meetingId),
+            eq(meetingJoinRequests.userId, ctx.auth.user.id),
+            inArray(meetingJoinRequests.status, ["pending", "approved"]),
+          ),
+        );
+
+      if (existing) {
+        return existing;
+      }
+
+      const [created] = await db
+        .insert(meetingJoinRequests)
+        .values({
+          meetingId: input.meetingId,
+          userId: ctx.auth.user.id,
+        })
+        // The partial unique index is the backstop against a concurrent knock.
+        .onConflictDoNothing()
+        .returning({ id: meetingJoinRequests.id, status: meetingJoinRequests.status });
+
+      if (created) {
+        return created;
+      }
+
+      // Lost the race to a concurrent request — return that one.
+      const [raced] = await db
+        .select({ id: meetingJoinRequests.id, status: meetingJoinRequests.status })
+        .from(meetingJoinRequests)
+        .where(
+          and(
+            eq(meetingJoinRequests.meetingId, input.meetingId),
+            eq(meetingJoinRequests.userId, ctx.auth.user.id),
+            inArray(meetingJoinRequests.status, ["pending", "approved"]),
+          ),
+        );
+
+      return raced ?? { id: null, status: "pending" as const };
+    }),
+  // Guest polls its own request while on the waiting screen.
+  getMyJoinRequest: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const [request] = await db
+        .select({
+          id: meetingJoinRequests.id,
+          status: meetingJoinRequests.status,
+        })
+        .from(meetingJoinRequests)
+        .where(
+          and(
+            eq(meetingJoinRequests.meetingId, input.meetingId),
+            eq(meetingJoinRequests.userId, ctx.auth.user.id),
+          ),
+        )
+        .orderBy(desc(meetingJoinRequests.createdAt))
+        .limit(1);
+
+      return request ?? null;
+    }),
+  // Host polls the waiting room while in the call.
+  getPendingRequests: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .query(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id),
+          ),
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the host can view join requests",
+        });
+      }
+
+      return db
+        .select({
+          id: meetingJoinRequests.id,
+          createdAt: meetingJoinRequests.createdAt,
+          userName: user.name,
+          userImage: user.image,
+        })
+        .from(meetingJoinRequests)
+        .innerJoin(user, eq(meetingJoinRequests.userId, user.id))
+        .where(
+          and(
+            eq(meetingJoinRequests.meetingId, input.meetingId),
+            eq(meetingJoinRequests.status, "pending"),
+          ),
+        )
+        .orderBy(meetingJoinRequests.createdAt);
+    }),
+  admit: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [updated] = await db
+        .update(meetingJoinRequests)
+        .set({ status: "approved" })
+        .where(
+          and(
+            eq(meetingJoinRequests.id, input.requestId),
+            eq(meetingJoinRequests.status, "pending"),
+            // Host-only: the request must belong to a meeting this user owns.
+            inArray(
+              meetingJoinRequests.meetingId,
+              db
+                .select({ id: meetings.id })
+                .from(meetings)
+                .where(eq(meetings.userId, ctx.auth.user.id)),
+            ),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Join request not found",
+        });
+      }
+
+      return updated;
+    }),
+  deny: protectedProcedure
+    .input(z.object({ requestId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [updated] = await db
+        .update(meetingJoinRequests)
+        .set({ status: "denied" })
+        .where(
+          and(
+            eq(meetingJoinRequests.id, input.requestId),
+            eq(meetingJoinRequests.status, "pending"),
+            inArray(
+              meetingJoinRequests.meetingId,
+              db
+                .select({ id: meetings.id })
+                .from(meetings)
+                .where(eq(meetings.userId, ctx.auth.user.id)),
+            ),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Join request not found",
+        });
+      }
+
+      return updated;
     }),
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))

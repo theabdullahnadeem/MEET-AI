@@ -11,11 +11,15 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
+import { JoinRequestsPanel } from "./join-requests-panel";
+
 interface Props {
   meetingName: string;
+  meetingId: string;
+  isOwner: boolean;
 }
 
-export const CallActive = ({ meetingName }: Props) => {
+export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
@@ -25,7 +29,9 @@ export const CallActive = ({ meetingName }: Props) => {
   );
 
   return (
-    <div className="flex flex-col gap-4 p-4 h-full overflow-hidden text-white">
+    <div className="relative flex flex-col gap-4 p-4 h-full overflow-hidden text-white">
+      {/* MU-3: host-only waiting-room panel (admit/deny knocks). */}
+      {isOwner && <JoinRequestsPanel meetingId={meetingId} />}
       <div className="shrink-0 bg-[#101213] rounded-full p-4 flex items-center gap-4">
         <Link
           href="/"

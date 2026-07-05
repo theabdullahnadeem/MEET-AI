@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2Icon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LiveKitRoom } from "@livekit/components-react";
 
 import "@livekit/components-styles";
@@ -9,62 +9,52 @@ import "@livekit/components-styles";
 import { CallLobby, type LobbyChoices } from "./call-lobby";
 import { CallActive } from "./call-active";
 import { CallEnded } from "./call-ended";
+import { CallKnock } from "./call-knock";
 
 interface Props {
   meetingId: string;
   meetingName: string;
+  isOwner: boolean;
   userId: string;
   userName: string;
   userImage: string;
 }
 
-export const CallConnect = ({ meetingId, meetingName }: Props) => {
+export const CallConnect = ({ meetingId, meetingName, isOwner }: Props) => {
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // MU-3: 403 from the token endpoint → the guest knocks and waits.
+  const [knocking, setKnocking] = useState(false);
   const [show, setShow] = useState<"lobby" | "call" | "ended">("lobby");
   const [choices, setChoices] = useState<LobbyChoices>({
     audioEnabled: true,
     videoEnabled: true,
   });
 
-  useEffect(() => {
-    let isIgnore = false;
-
-    const fetchToken = async () => {
-      try {
-        const res = await fetch(
-          `/api/livekit-token?room=${encodeURIComponent(meetingId)}`,
-        );
-        // MU-2: non-owners can reach this screen from a shared link, but the
-        // token endpoint is owner-only until knock-to-join (MU-3) lands —
-        // give them a clear message instead of a generic failure.
-        if (res.status === 403) {
-          if (!isIgnore) {
-            setError(
-              "You don't have access to this meeting yet. Ask the host to invite you.",
-            );
-          }
-          return;
-        }
-        if (!res.ok) throw new Error("Failed to fetch token");
-        const data = await res.json();
-        if (!isIgnore) {
-          setToken(data.token);
-        }
-      } catch (e) {
-        console.error("LiveKit token fetch failed:", e);
-        if (!isIgnore) {
-          setError("Could not connect to meeting. Please try again.");
-        }
+  const fetchToken = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/livekit-token?room=${encodeURIComponent(meetingId)}`,
+      );
+      if (res.status === 403) {
+        // Not authorized (yet) — enter the knock-to-join flow. CallKnock
+        // calls back here once the host admits.
+        setKnocking(true);
+        return;
       }
-    };
-
-    fetchToken();
-
-    return () => {
-      isIgnore = true;
-    };
+      if (!res.ok) throw new Error("Failed to fetch token");
+      const data = await res.json();
+      setToken(data.token);
+      setKnocking(false);
+    } catch (e) {
+      console.error("LiveKit token fetch failed:", e);
+      setError("Could not connect to meeting. Please try again.");
+    }
   }, [meetingId]);
+
+  useEffect(() => {
+    fetchToken();
+  }, [fetchToken]);
 
   if (error) {
     return (
@@ -72,6 +62,10 @@ export const CallConnect = ({ meetingId, meetingName }: Props) => {
         <p className="text-white text-sm">{error}</p>
       </div>
     );
+  }
+
+  if (knocking) {
+    return <CallKnock meetingId={meetingId} onApproved={fetchToken} />;
   }
 
   if (!token) {
@@ -110,7 +104,11 @@ export const CallConnect = ({ meetingId, meetingName }: Props) => {
       className="h-full"
       onDisconnected={() => setShow("ended")}
     >
-      <CallActive meetingName={meetingName} />
+      <CallActive
+        meetingName={meetingName}
+        meetingId={meetingId}
+        isOwner={isOwner}
+      />
     </LiveKitRoom>
   );
 };

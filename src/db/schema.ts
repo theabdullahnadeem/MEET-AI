@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
-import { pgTable, text, timestamp, boolean, index, pgEnum } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, text, timestamp, boolean, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -120,6 +120,31 @@ export const webhookEvents = pgTable("webhook_events", {
   id: text("id").primaryKey(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const joinRequestStatus = pgEnum("join_request_status",
+  [
+    "pending",
+    "approved",
+    "denied"
+  ]
+)
+
+// MU-3: knock-to-join. A non-owner opening a meeting link creates a `pending`
+// request; the host admits (→ approved, unlocks the token endpoint) or denies.
+export const meetingJoinRequests = pgTable("meeting_join_requests", {
+  id: text("id").primaryKey().$default(() => nanoid()),
+  meetingId: text("meeting_id").notNull().references(() => meetings.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  status: joinRequestStatus("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  // At most ONE live (pending/approved) request per user per meeting — the
+  // DB-level backstop against duplicate knocks; denied rows don't block a re-ask.
+  uniqueIndex("meeting_join_requests_active_uq")
+    .on(table.meetingId, table.userId)
+    .where(sql`${table.status} <> 'denied'`),
+  index("meeting_join_requests_meeting_status_idx").on(table.meetingId, table.status),
+]);
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
