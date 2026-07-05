@@ -1,5 +1,6 @@
 import { EmptyState } from "@/components/empty-state";
 import { Button } from "@/components/ui/button";
+import { ShareInviteButton } from "@/components/share-invite-button";
 import Link from "next/link";
 import { VideoIcon, BanIcon } from "lucide-react";
 
@@ -22,6 +23,7 @@ export const UpcomingState = ({meetingId, onCancelMeeting, isCancelling}: Props)
           <BanIcon />
           Cancel Meeting
         </Button>
+        <ShareInviteButton meetingId={meetingId} className="w-full lg:w-auto" />
         <Button asChild className="w-full lg:w-auto" disabled={isCancelling}>
           <Link href={`/call/${meetingId}`}>
             <VideoIcon />

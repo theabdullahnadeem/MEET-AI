@@ -8,6 +8,7 @@ import {
   type JobContext,
 } from "@livekit/agents";
 import * as openai from "@livekit/agents-plugin-openai";
+import { ParticipantKind, RoomEvent } from "@livekit/rtc-node";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import JSONL from "jsonl-parse-stringify";
 
@@ -69,6 +70,11 @@ export default defineAgent({
       }),
     });
 
+    // Identity of the participant whose audio is currently forwarded to the
+    // model (see the ActiveSpeakersChanged handler below). Also used to
+    // attribute transcript lines to the person who was actually speaking.
+    let linkedSpeakerIdentity: string | undefined;
+
     // --- Transcript capture ------------------------------------------------
     // Attribute agent lines to agentId and human lines to the human's identity
     // (which equals their user id — set when the LiveKit token is minted), so
@@ -95,7 +101,7 @@ export default defineAgent({
         });
       } else if (item.role === "user") {
         transcript.push({
-          speaker_id: firstHumanIdentity(),
+          speaker_id: linkedSpeakerIdentity ?? firstHumanIdentity(),
           type: "user",
           text,
           start_ts: now,
@@ -154,6 +160,29 @@ export default defineAgent({
           agentInstructions ?? "You are a helpful AI meeting assistant.",
       }),
       room: ctx.room,
+    });
+
+    // --- Multi-user audio routing -------------------------------------------
+    // RoomIO forwards only ONE participant's audio to the realtime model (it
+    // links to the first participant by default), so in multi-user meetings
+    // the agent only heard whoever joined first. Re-link the audio input to
+    // whichever human is actively speaking so the agent hears everyone.
+    ctx.room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
+      const humanSpeaker = speakers.find(
+        (p) => p.kind === ParticipantKind.STANDARD,
+      );
+      if (!humanSpeaker) return;
+
+      if (!linkedSpeakerIdentity) {
+        linkedSpeakerIdentity =
+          session._roomIO?.linkedParticipant?.identity ?? undefined;
+      }
+
+      if (humanSpeaker.identity !== linkedSpeakerIdentity) {
+        linkedSpeakerIdentity = humanSpeaker.identity;
+        session._roomIO?.setParticipant(humanSpeaker.identity);
+        console.log(`[Agent] Listening to speaker: ${humanSpeaker.identity}`);
+      }
     });
 
     console.log(`[Agent] Session started for meeting: ${meetingId}`);

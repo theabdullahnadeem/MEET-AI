@@ -11,6 +11,7 @@ import {
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
 
+import { ShareInviteButton } from "@/components/share-invite-button";
 import { JoinRequestsPanel } from "./join-requests-panel";
 
 interface Props {
@@ -40,6 +41,12 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
           <Image src="/logo.svg" alt="Logo" width={22} height={22} />
         </Link>
         <h4 className="text-base">{meetingName}</h4>
+        <ShareInviteButton
+          meetingId={meetingId}
+          variant="ghost"
+          size="sm"
+          className="ml-auto bg-white/10 hover:bg-white/20 text-white hover:text-white"
+        />
       </div>
       <GridLayout tracks={tracks} className="flex-1 min-h-0">
         <ParticipantTile />
@@ -50,7 +57,7 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
           controls={{
             camera: true,
             microphone: true,
-            screenShare: false,
+            screenShare: true,
             chat: false,
             settings: false,
             leave: true,
