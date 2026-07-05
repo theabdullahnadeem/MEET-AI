@@ -26,6 +26,7 @@
     "@livekit/components-react": "^2.9.21",
     "@livekit/components-styles": "^1.2.0",
     "@livekit/protocol": "^1.46.6",
+    "@livekit/rtc-node": "^0.13.30",
     "@neondatabase/serverless": "^1.0.2",
     "@polar-sh/better-auth": "^1.8.0",
     "@polar-sh/sdk": "^0.42.5",
