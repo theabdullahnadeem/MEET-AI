@@ -29,5 +29,11 @@ export const CallView = ({meetingId}: Props) => {
         )
     }
 
-    return <CallProvider meetingId={meetingId} meetingName={data.name} />
+    return (
+        <CallProvider
+            meetingId={meetingId}
+            meetingName={data.name}
+            isOwner={data.isOwner}
+        />
+    )
 }
