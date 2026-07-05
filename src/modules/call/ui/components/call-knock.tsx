@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Loader2Icon, ShieldXIcon } from "lucide-react";
+import { Loader2Icon, RefreshCwIcon, ShieldXIcon, TriangleAlertIcon } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { useTRPC } from "@/trpc/client";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   meetingId: string;
@@ -29,7 +30,11 @@ export const CallKnock = ({ meetingId, onApproved }: Props) => {
     }
   }, [meetingId, requestToJoin]);
 
-  const { data: myRequest } = useQuery({
+  const {
+    data: myRequest,
+    isError: pollFailed,
+    refetch,
+  } = useQuery({
     ...trpc.meeting.getMyJoinRequest.queryOptions({ meetingId }),
     // Poll while the host decides; stop once approved/denied.
     refetchInterval: (query) =>
@@ -43,6 +48,33 @@ export const CallKnock = ({ meetingId, onApproved }: Props) => {
       onApproved();
     }
   }, [status, onApproved]);
+
+  // If the knock itself failed there is no request row to poll, and if polling
+  // fails the guest can't see the host's decision — either way, surface it and
+  // let them retry instead of waiting forever.
+  if (status !== "denied" && (requestToJoin.isError || pollFailed)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-radial from-sidebar-accent to-sidebar">
+        <div className="flex flex-col items-center gap-y-4 bg-background rounded-lg p-10 shadow-sm text-center">
+          <TriangleAlertIcon className="size-8 text-destructive" />
+          <h6 className="text-lg font-medium">Couldn&apos;t reach the meeting</h6>
+          <p className="text-sm text-muted-foreground max-w-sm">
+            Your request to join could not be sent or checked. Please try again.
+          </p>
+          <Button
+            onClick={() => {
+              requestToJoin.mutate({ meetingId });
+              refetch();
+            }}
+            disabled={requestToJoin.isPending}
+          >
+            <RefreshCwIcon />
+            Try again
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (status === "denied") {
     return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
@@ -28,10 +29,20 @@ export const JoinRequestsPanel = ({ meetingId }: Props) => {
     queryClient.invalidateQueries({ queryKey: pendingOptions.queryKey });
 
   const admit = useMutation(
-    trpc.meeting.admit.mutationOptions({ onSettled: invalidate }),
+    trpc.meeting.admit.mutationOptions({
+      // Surface failures to the host — a silent failure looks like the
+      // Admit button simply did nothing.
+      onError: (error) =>
+        toast.error(error.message || "Failed to admit participant"),
+      onSettled: invalidate,
+    }),
   );
   const deny = useMutation(
-    trpc.meeting.deny.mutationOptions({ onSettled: invalidate }),
+    trpc.meeting.deny.mutationOptions({
+      onError: (error) =>
+        toast.error(error.message || "Failed to deny participant"),
+      onSettled: invalidate,
+    }),
   );
 
   if (!requests || requests.length === 0) {
