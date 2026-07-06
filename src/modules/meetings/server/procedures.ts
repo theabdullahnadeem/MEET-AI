@@ -3,7 +3,7 @@ import { agents, meetings, meetingJoinRequests, user } from "@/db/schema";
 import { createTRPCRouter, premiumProcedure, protectedProcedure } from "@/trpc/init";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, getTableColumns, and, ilike, desc, count, sql, inArray } from "drizzle-orm";
+import { eq, getTableColumns, and, or, ilike, desc, count, sql, inArray } from "drizzle-orm";
 import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_PAGE,
@@ -20,6 +20,26 @@ import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
 import { escapeLike } from "@/lib/utils";
+
+// Participant access: a user may READ a meeting they own OR one they were
+// admitted to (approved join request). Write/management procedures must keep
+// filtering by ownership only.
+const canAccessMeeting = (userId: string) =>
+  or(
+    eq(meetings.userId, userId),
+    inArray(
+      meetings.id,
+      db
+        .select({ id: meetingJoinRequests.meetingId })
+        .from(meetingJoinRequests)
+        .where(
+          and(
+            eq(meetingJoinRequests.userId, userId),
+            eq(meetingJoinRequests.status, "approved"),
+          ),
+        ),
+    ),
+  );
 
 export const meetingsRouter = createTRPCRouter({
   cancelMeeting: protectedProcedure
@@ -55,12 +75,13 @@ export const meetingsRouter = createTRPCRouter({
     return token;
   }) ,
   getTranscript: protectedProcedure.input(z.object({id: z.string()})).query(async ({input, ctx}) => {
-    const [existingMeeting] = await db 
+    // Participant access: owner OR admitted guest may read the transcript.
+    const [existingMeeting] = await db
     .select()
     .from(meetings)
     .where(
       and(
-        eq(meetings.id, input.id), eq(meetings.userId, ctx.auth.user.id)
+        eq(meetings.id, input.id), canAccessMeeting(ctx.auth.user.id)
       )
     );
 
@@ -446,6 +467,8 @@ export const meetingsRouter = createTRPCRouter({
   getOne: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(async ({ input, ctx }) => {
+      // Participant access: owner OR admitted guest may read the meeting.
+      // isOwner lets the UI hide management actions for guests.
       const [existingMeeting] = await db
         .select({
           ...getTableColumns(meetings),
@@ -455,7 +478,7 @@ export const meetingsRouter = createTRPCRouter({
         .from(meetings)
         .innerJoin(agents, eq(meetings.agentId, agents.id))
         .where(
-          and(eq(meetings.id, input.id), eq(meetings.userId, ctx.auth.user.id)),
+          and(eq(meetings.id, input.id), canAccessMeeting(ctx.auth.user.id)),
         );
 
       if (!existingMeeting) {
@@ -465,7 +488,10 @@ export const meetingsRouter = createTRPCRouter({
         });
       }
 
-      return existingMeeting;
+      return {
+        ...existingMeeting,
+        isOwner: existingMeeting.userId === ctx.auth.user.id,
+      };
     }),
   getMany: protectedProcedure
     .input(
@@ -490,17 +516,20 @@ export const meetingsRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       const { search, page, pageSize, agentId, status } = input;
 
+      // Participant access: the list shows meetings you own AND meetings you
+      // were admitted to ("shared with me"); isOwner drives the Shared badge.
       const data = await db
         .select({
           ...getTableColumns(meetings),
           agent: agents,
           duration: sql<number>`EXTRACT(EPOCH FROM (ended_at - started_at))`.as("duration"),
+          isOwner: sql<boolean>`${meetings.userId} = ${ctx.auth.user.id}`.as("is_owner"),
         })
         .from(meetings)
         .innerJoin(agents, eq(meetings.agentId, agents.id))
         .where(
           and(
-            eq(meetings.userId, ctx.auth.user.id),
+            canAccessMeeting(ctx.auth.user.id),
             search ? ilike(meetings.name, `%${escapeLike(search)}%`) : undefined,
             agentId ? eq(meetings.agentId, agentId) : undefined,
             status ? eq(meetings.status, status) : undefined,
@@ -518,7 +547,7 @@ export const meetingsRouter = createTRPCRouter({
         .innerJoin(agents, eq(meetings.agentId, agents.id))
         .where(
           and(
-            eq(meetings.userId, ctx.auth.user.id),
+            canAccessMeeting(ctx.auth.user.id),
             search ? ilike(meetings.name, `%${escapeLike(search)}%`) : undefined,
             agentId ? eq(meetings.agentId, agentId) : undefined,
             status ? eq(meetings.status, status) : undefined,
