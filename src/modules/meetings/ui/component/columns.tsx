@@ -2,7 +2,6 @@
 
 import { ColumnDef } from "@tanstack/react-table";
 import {format} from "date-fns";
-import humanizeDuration from "humanize-duration";
 import { MeetingGetMany } from "../../types";
 import { GeneratedAvatar } from "@/components/generated-avatar";
 import { 
@@ -39,7 +38,17 @@ export const columns: ColumnDef<MeetingGetMany[number]>[] = [
     header: "Meeting Name",
     cell: ({ row }) => (
       <div className="flex flex-col gap-y-1">
-        <span className="font-semibold">{row.original.name}</span>
+        <div className="flex items-center gap-x-2">
+          <span className="font-semibold">{row.original.name}</span>
+          {!row.original.isOwner && (
+            <Badge
+              variant="outline"
+              className="bg-sky-500/20 text-sky-800 border-sky-800/5"
+            >
+              Shared
+            </Badge>
+          )}
+        </div>
             <div className="flex items-center gap-x-2">
               <div className="flex items-center gap-x-1">
                 <CornerDownRightIcon className="size-3 text-muted-foreground" />

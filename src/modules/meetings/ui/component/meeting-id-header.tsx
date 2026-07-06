@@ -7,7 +7,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -25,11 +24,13 @@ import {
 interface Props {
     meetingId: string;
     meetingName: string;
+    /** Management actions (edit/delete) are owner-only. */
+    isOwner: boolean;
     onEdit: () => void;
     onRemove: () => void;
 }
 
-export const MeetingIdViewHeader = ({meetingId, meetingName, onEdit, onRemove}: Props) => {
+export const MeetingIdViewHeader = ({meetingId, meetingName, isOwner, onEdit, onRemove}: Props) => {
     return(
         <div className="flex items-center justify-between">
             <Breadcrumb>
@@ -54,6 +55,7 @@ export const MeetingIdViewHeader = ({meetingId, meetingName, onEdit, onRemove}: 
                 </BreadcrumbList>
             </Breadcrumb>
             {/* Without the modal={false} the dialog that opens when we click on the more vertical icon will not close when we click outside of it and it will get stuck */}
+            {isOwner && (
             <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost">
@@ -71,6 +73,7 @@ export const MeetingIdViewHeader = ({meetingId, meetingName, onEdit, onRemove}: 
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+            )}
         </div>
     )
 }

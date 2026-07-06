@@ -80,15 +80,18 @@ export const MeetingIdView = ({ meetingId }: Props) => {
   return (
     <>
       <RemoveConfirmation />
-      <UpdateMeetingDialogue
-        open={updateMeetingDialogOpen}
-        onOpenChange={setUpdateMeetingDialogOpen}
-        initialValues={data}
-      />
+      {data.isOwner && (
+        <UpdateMeetingDialogue
+          open={updateMeetingDialogOpen}
+          onOpenChange={setUpdateMeetingDialogOpen}
+          initialValues={data}
+        />
+      )}
       <div className="flex-1 py-4 px-4 md:px-8 flex flex-col gap-y-4">
         <MeetingIdViewHeader
           meetingId={meetingId}
           meetingName={data.name}
+          isOwner={data.isOwner}
           onEdit={() => setUpdateMeetingDialogOpen(true)}
           onRemove={handleRemoveMeeting}
         />
@@ -98,7 +101,8 @@ export const MeetingIdView = ({ meetingId }: Props) => {
         {isActive && <ActiveState meetingId={meetingId} />}
         {isUpcoming && (
           <UpcomingState
-            meetingId={meetingId} 
+            meetingId={meetingId}
+            canCancel={data.isOwner}
             onCancelMeeting={()=> cancelMutation.mutate({id: meetingId})}
             isCancelling={cancelMutation.isPending}
           />
