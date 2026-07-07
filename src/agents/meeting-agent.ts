@@ -12,9 +12,18 @@ import { ParticipantKind, RoomEvent } from "@livekit/rtc-node";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import JSONL from "jsonl-parse-stringify";
 
+import {
+  AGENT_CONTROL_TOPIC,
+  AGENT_STATE_TOPIC,
+  type AgentControlMessage,
+  type AgentMode,
+  type AgentStateMessage,
+} from "../modules/call/agent-protocol";
+
 interface RoomMeta {
   meetingId?: string;
   meetingName?: string;
+  hostUserId?: string;
   agentId?: string;
   agentName?: string;
   agentInstructions?: string;
@@ -40,6 +49,15 @@ const IDLE_TIMEOUT_MINUTES = minutesFromEnv("MEETING_IDLE_TIMEOUT_MINUTES", 10);
 // Hard cap on meeting length.
 const MAX_DURATION_MINUTES = minutesFromEnv("MEETING_MAX_DURATION_MINUTES", 60);
 
+// C.1 interim: group-aware behaviour appended to every persona's instructions.
+const GROUP_INSTRUCTIONS =
+  "\n\nYou are in a live meeting that may include several human participants. " +
+  "Never talk over people: wait until they have finished speaking, and if a " +
+  "discussion is going on between participants, let it settle before answering. " +
+  "When multiple people have contributed, take everyone's input into account and " +
+  "address the group (or people by name) rather than only the last speaker. " +
+  "Keep replies concise.";
+
 export default defineAgent({
   entry: async (ctx: JobContext) => {
     // Room metadata is set when the meeting is created (see meeting.create).
@@ -50,7 +68,8 @@ export default defineAgent({
       ? (JSON.parse(rawMetadata) as RoomMeta)
       : {};
 
-    const { meetingId, agentId, agentName, agentInstructions } = metadata;
+    const { meetingId, hostUserId, agentId, agentName, agentInstructions } =
+      metadata;
 
     if (!meetingId || !agentId) {
       console.error(
@@ -71,7 +90,14 @@ export default defineAgent({
           type: "server_vad",
           threshold: 0.5,
           prefix_padding_ms: 300,
-          silence_duration_ms: 500,
+          // C.1 interim: a longer pause before the agent considers a turn
+          // finished, so it stops jumping into ongoing discussions.
+          silence_duration_ms: 800,
+          // C.3: the API never auto-replies — the agent decides when to
+          // respond (see the agent-modes section below). Muted listening
+          // therefore creates no responses and costs no reply tokens.
+          create_response: false,
+          interrupt_response: true,
         },
         inputAudioTranscription: {
           model: "whisper-1",
@@ -176,7 +202,8 @@ export default defineAgent({
     await session.start({
       agent: new voice.Agent({
         instructions:
-          agentInstructions ?? "You are a helpful AI meeting assistant.",
+          (agentInstructions ?? "You are a helpful AI meeting assistant.") +
+          GROUP_INSTRUCTIONS,
       }),
       room: ctx.room,
       inputOptions: {
@@ -324,6 +351,93 @@ export default defineAgent({
       if (idleTimer) clearTimeout(idleTimer);
       clearTimeout(maxDurationTimer);
     });
+
+    // --- Agent voice modes (C.3) --------------------------------------------
+    // The realtime model runs with create_response:false, so replies only
+    // happen when the agent asks for one:
+    //   active — reply at the end of each user turn (same VAD signal the API
+    //            would have used for its auto-response).
+    //   muted  — keep listening and transcribing, never speak; no response is
+    //            ever created, so muted listening costs no reply tokens.
+    // Anyone in the room can still summon one answer via an `ask` message
+    // (the "Ask AI" button, shown while muted). Mode switching is host-only.
+    let agentMode: AgentMode = "active";
+
+    const tryReply = (opts?: { force?: boolean }) => {
+      if (ending) return;
+      if (!opts?.force && agentMode !== "active") return;
+      const state = session.agentState;
+      if (state === "thinking" || state === "speaking") return;
+      try {
+        session.generateReply();
+      } catch (err) {
+        console.error("[Agent] generateReply failed:", err);
+      }
+    };
+
+    session.on(voice.AgentSessionEventTypes.UserStateChanged, (ev) => {
+      if (ev.oldState === "speaking" && ev.newState === "listening") {
+        tryReply();
+      }
+    });
+
+    const textEncoder = new TextEncoder();
+    const textDecoder = new TextDecoder();
+
+    const broadcastMode = () => {
+      const message: AgentStateMessage = {
+        type: "mode_changed",
+        mode: agentMode,
+      };
+      ctx.room.localParticipant
+        ?.publishData(textEncoder.encode(JSON.stringify(message)), {
+          reliable: true,
+          topic: AGENT_STATE_TOPIC,
+        })
+        .catch((err: unknown) =>
+          console.error("[Agent] Failed to broadcast mode:", err),
+        );
+    };
+
+    ctx.room.on(RoomEvent.DataReceived, (payload, participant, _kind, topic) => {
+      if (topic !== AGENT_CONTROL_TOPIC || !participant) return;
+      if (participant.kind !== ParticipantKind.STANDARD) return;
+
+      let message: AgentControlMessage;
+      try {
+        message = JSON.parse(textDecoder.decode(payload)) as AgentControlMessage;
+      } catch {
+        return;
+      }
+
+      if (message.type === "set_mode") {
+        // Host-only. hostUserId travels in the room metadata; rooms created
+        // before this shipped lack it — fall back to accepting any human.
+        if (hostUserId && participant.identity !== hostUserId) return;
+        if (message.mode !== "active" && message.mode !== "muted") return;
+        if (message.mode !== agentMode) {
+          agentMode = message.mode;
+          if (agentMode === "muted") {
+            // Cut off anything currently being said.
+            try {
+              session.interrupt();
+            } catch {
+              // nothing was playing
+            }
+          }
+          console.log(
+            `[Agent] Mode set to ${agentMode} by ${participant.identity}`,
+          );
+        }
+        broadcastMode();
+      } else if (message.type === "ask") {
+        tryReply({ force: true });
+      }
+    });
+
+    // Late joiners need the current mode for their UI badge.
+    ctx.room.on(RoomEvent.ParticipantConnected, () => broadcastMode());
+    broadcastMode();
 
     console.log(
       `[Agent] Session started for meeting: ${meetingId} ` +

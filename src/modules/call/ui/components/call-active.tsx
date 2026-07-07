@@ -5,6 +5,7 @@ import Image from "next/image";
 import { RoomAudioRenderer, ControlBar } from "@livekit/components-react";
 
 import { ShareInviteButton } from "@/components/share-invite-button";
+import { AgentControls } from "./agent-controls";
 import { JoinRequestsPanel } from "./join-requests-panel";
 import { MeetingLayout } from "./meeting-layout";
 
@@ -27,12 +28,16 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
           <Image src="/logo.svg" alt="Logo" width={22} height={22} />
         </Link>
         <h4 className="text-base">{meetingName}</h4>
-        <ShareInviteButton
-          meetingId={meetingId}
-          variant="ghost"
-          size="sm"
-          className="ml-auto bg-white/10 hover:bg-white/20 text-white hover:text-white"
-        />
+        <div className="ml-auto flex items-center gap-x-2">
+          {/* C.3: mute/unmute the AI (host) + Ask AI while muted (everyone). */}
+          <AgentControls isOwner={isOwner} />
+          <ShareInviteButton
+            meetingId={meetingId}
+            variant="ghost"
+            size="sm"
+            className="bg-white/10 hover:bg-white/20 text-white hover:text-white"
+          />
+        </div>
       </div>
       {/* C.4: screens take the stage when shared (supports several at once). */}
       <MeetingLayout />
