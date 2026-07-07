@@ -21,9 +21,15 @@ const receiver = new WebhookReceiver(
 );
 
 // Record the room to Cloudflare R2 (S3-compatible). The file path is
-// deterministic so egress_ended can reconstruct the public URL.
+// deterministic so egress_ended can reconstruct the object key.
 async function startRecording(roomName: string) {
   try {
+    // Record through the app's own template (/egress-template) so the video
+    // shows what participants see — tiles with name/avatar placeholders when
+    // cameras are off, screen shares, etc. — instead of the default
+    // template's black screen when no camera is published. Falls back to the
+    // default LiveKit template if NEXT_PUBLIC_APP_URL is unset.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
     await livekitEgressClient.startRoomCompositeEgress(
       roomName,
       new EncodedFileOutput({
@@ -39,6 +45,7 @@ async function startRecording(roomName: string) {
           }),
         },
       }),
+      appUrl ? { customBaseUrl: `${appUrl}/egress-template` } : {},
     );
     console.log(`[livekit-webhook] Started recording for room: ${roomName}`);
   } catch (err) {
