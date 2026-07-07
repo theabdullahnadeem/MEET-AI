@@ -227,10 +227,15 @@ only one speaker.
   to the realtime model. Active‑speaker re‑linking (shipped July 2026) means the agent hears
   whoever is loudest, but genuinely simultaneous speech from a second person is not heard.
 - **Paths:** (a) use the SDK's `OverlappingSpeech` event to delay the reply until turns settle
-  (partial — still single‑track); (b) **server‑side audio mixing**: mix all human tracks into
-  one stream fed to the model (a custom audio input; the real fix, heavier build); (c) wait for
-  upstream multi‑participant support in `@livekit/agents`. Interim tuning: longer
-  `silence_duration_ms` so the agent stops jumping in early.
+  (partial — still single‑track); (b) **server‑side audio mixing — the real fix, and confirmed
+  buildable today**: `@livekit/rtc-node` (installed, 0.13.30) ships an `AudioMixer` that
+  combines multiple audio streams into one; subscribe to every human's mic, mix, and feed the
+  session the mixed stream as a custom audio input. Bonus: VAD then only sees silence once
+  *everyone* stops talking, so "wait, then answer" falls out naturally. Trade‑off: a mixed
+  stream can't attribute words per speaker — transcript labels fall back to the active‑speaker
+  heuristic. Multi‑day agent build, not a quick PR. (c) upstream multi‑participant support in
+  `@livekit/agents` (1.5.0 still uses the single‑linked‑participant model). Interim tuning:
+  longer `silence_duration_ms` so the agent stops jumping in early.
 - Prompt‑side: instruct the agent to address participants by name and engage the whole group.
 
 ### C.2 Add/remove the agent mid‑meeting (as often as needed)
