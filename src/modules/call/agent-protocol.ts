@@ -2,6 +2,12 @@
 // agent worker (plain types + constants only — both runtimes import this).
 // Messages ride LiveKit data channels as JSON.
 
+/**
+ * C.2: the worker registers under this name (named dispatch), which lets the
+ * server add/remove the agent mid-meeting via AgentDispatchClient.
+ */
+export const MEETING_AGENT_NAME = "meetai-agent";
+
 /** Clients → agent: mode switches (host-only) and answer requests. */
 export const AGENT_CONTROL_TOPIC = "agent-control";
 /** Agent → clients: current mode, for UI badges. */

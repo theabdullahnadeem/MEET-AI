@@ -10,7 +10,8 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { meetings } from "@/db/schema";
 import { inngest } from "@/inngest/client";
-import { livekitEgressClient } from "@/lib/livekit";
+import { livekitAgentDispatch, livekitEgressClient } from "@/lib/livekit";
+import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
 import { MeetingStatus } from "@/constants";
 import { rateLimitOk, clientIp } from "@/lib/ratelimit";
 import { isNewWebhookEvent } from "@/lib/webhook-idempotency";
@@ -115,6 +116,17 @@ export async function POST(req: NextRequest) {
     // upcoming), so recording starts exactly once per meeting.
     if (activated) {
       await startRecording(roomName);
+
+      // C.2: the worker is a NAMED agent now (no automatic dispatch), so the
+      // first human joining is when we explicitly send the agent in.
+      try {
+        await livekitAgentDispatch.createDispatch(roomName, MEETING_AGENT_NAME);
+        console.log(`[livekit-webhook] Dispatched agent to room: ${roomName}`);
+      } catch (err) {
+        // Non-fatal — the meeting continues without the agent; the host can
+        // add it from the call header.
+        console.error("[livekit-webhook] Failed to dispatch agent:", err);
+      }
     }
 
     return NextResponse.json({ status: "ok" });
