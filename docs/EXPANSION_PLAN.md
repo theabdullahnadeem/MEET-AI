@@ -219,7 +219,13 @@ seamless audio/subtitle translation for others.
 Feature batch requested after multi‑user shipped. Each item lists how it fits the current
 architecture and any hard constraints.
 
-### C.1 Overlapping speech — listen to everyone, then answer
+### C.1 Overlapping speech — listen to everyone, then answer  · *Deferred → v1.1*
+**Decision (July 2026): deliberately deferred — ships as the first post‑launch update (v1.1),
+after the rest of Part C is complete and security checks are done.** Not a defect: turn‑based
+conversation is fully covered by active‑speaker switching; runtime cost of the fix is ~zero
+(audio tokens bill by time, and a mixed stream is still one stream) — this is a quality/polish
+upgrade. The interim tuning below rides along with C.3 in the meantime.
+
 When two people talk at the same time, the agent should hold its reply, hear **both** of them
 out, and then answer in a way that **involves/addresses everyone** — instead of reacting to
 only one speaker.
@@ -301,8 +307,9 @@ Download buttons on the completed‑meeting view:
 3. **C.5 English transcript pipeline** — pipeline‑only, independent.
 4. **C.2 Add/remove agent** — needs the named‑dispatch switch + transcript merging.
 5. **C.7 2FA** — independent, any time.
-6. **C.1 Overlapping speech** — hardest (audio mixing or upstream SDK); do last or when the
-   SDK catches up. Pairs with MU‑4/MU‑5 (host controls + People panel) from Part A.
+6. **C.1 Overlapping speech** — **deferred by decision to v1.1**, the first post‑launch update
+   (see C.1). Its interim tuning (silence threshold + group‑aware prompt) ships with C.3.
+   Pairs with MU‑4/MU‑5 (host controls + People panel) from Part A.
 
 ---
 
