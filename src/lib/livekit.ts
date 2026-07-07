@@ -31,6 +31,7 @@ export async function createLiveKitToken(
   userName: string,
   userImage: string,
   roomName: string,
+  options?: { roomAdmin?: boolean },
   ttlSeconds = 3600,
 ): Promise<string> {
   const token = new AccessToken(
@@ -49,7 +50,8 @@ export async function createLiveKitToken(
     roomJoin: true,
     canPublish: true,
     canSubscribe: true,
-    roomAdmin: false,
+    // MU-4: the meeting host gets room-admin permissions; guests don't.
+    roomAdmin: options?.roomAdmin ?? false,
   });
 
   return token.toJwt();
