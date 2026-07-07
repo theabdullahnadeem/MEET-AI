@@ -9,12 +9,13 @@ import {
 } from "@livekit/agents";
 import * as openai from "@livekit/agents-plugin-openai";
 import { ParticipantKind, RoomEvent } from "@livekit/rtc-node";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import JSONL from "jsonl-parse-stringify";
 
 import {
   AGENT_CONTROL_TOPIC,
   AGENT_STATE_TOPIC,
+  MEETING_AGENT_NAME,
   type AgentControlMessage,
   type AgentMode,
   type AgentStateMessage,
@@ -171,11 +172,31 @@ export default defineAgent({
             secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
           },
         });
+
+        // C.2: a meeting can have several agent sessions (the host can remove
+        // and re-add the agent). Merge with the segment a previous session
+        // already saved so the final file covers the whole meeting.
+        let previousSegment: TranscriptItem[] = [];
+        try {
+          const existing = await s3.send(
+            new GetObjectCommand({
+              Bucket: process.env.R2_BUCKET!,
+              Key: key,
+            }),
+          );
+          const body = await existing.Body?.transformToString();
+          if (body) {
+            previousSegment = JSONL.parse<TranscriptItem>(body);
+          }
+        } catch {
+          // no previous segment — first agent session of this meeting
+        }
+
         await s3.send(
           new PutObjectCommand({
             Bucket: process.env.R2_BUCKET!,
             Key: key,
-            Body: JSONL.stringify(transcript),
+            Body: JSONL.stringify([...previousSegment, ...transcript]),
             ContentType: "application/jsonl",
           }),
         );
@@ -452,6 +473,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   cli.runApp(
     new WorkerOptions({
       agent: fileURLToPath(import.meta.url),
+      // C.2: register as a NAMED agent. Automatic dispatch is off — the agent
+      // joins only when explicitly dispatched (webhook on first human join,
+      // or the host's Add AI button mid-meeting).
+      agentName: MEETING_AGENT_NAME,
     }),
   );
 }

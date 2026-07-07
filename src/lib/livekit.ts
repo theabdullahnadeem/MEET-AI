@@ -1,6 +1,6 @@
 import "server-only";
 
-import { AccessToken, RoomServiceClient, EgressClient } from "livekit-server-sdk";
+import { AccessToken, AgentDispatchClient, RoomServiceClient, EgressClient } from "livekit-server-sdk";
 
 if (!process.env.LIVEKIT_API_KEY) throw new Error("LIVEKIT_API_KEY is not set");
 if (!process.env.LIVEKIT_API_SECRET) throw new Error("LIVEKIT_API_SECRET is not set");
@@ -13,6 +13,14 @@ export const livekitRoomService = new RoomServiceClient(
 );
 
 export const livekitEgressClient = new EgressClient(
+  process.env.LIVEKIT_URL,
+  process.env.LIVEKIT_API_KEY,
+  process.env.LIVEKIT_API_SECRET,
+);
+
+// C.2: explicit (named) agent dispatch — used to add the agent to a room,
+// both on first human join (webhook) and when the host re-adds it mid-meeting.
+export const livekitAgentDispatch = new AgentDispatchClient(
   process.env.LIVEKIT_URL,
   process.env.LIVEKIT_API_KEY,
   process.env.LIVEKIT_API_SECRET,

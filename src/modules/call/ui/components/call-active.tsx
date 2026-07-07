@@ -29,8 +29,9 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
         </Link>
         <h4 className="text-base">{meetingName}</h4>
         <div className="ml-auto flex items-center gap-x-2">
-          {/* C.3: mute/unmute the AI (host) + Ask AI while muted (everyone). */}
-          <AgentControls isOwner={isOwner} />
+          {/* C.3: mute/unmute the AI (host) + Ask AI while muted (everyone).
+              C.2: host can remove/re-add the agent any time. */}
+          <AgentControls meetingId={meetingId} isOwner={isOwner} />
           <ShareInviteButton
             meetingId={meetingId}
             variant="ghost"

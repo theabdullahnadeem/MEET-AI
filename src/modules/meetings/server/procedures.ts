@@ -12,7 +12,9 @@ import {
 } from "@/constants";
 import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
-import { livekitRoomService } from "@/lib/livekit";
+import { livekitAgentDispatch, livekitRoomService } from "@/lib/livekit";
+import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
+import { ParticipantInfo_Kind } from "@livekit/protocol";
 import { generateAvatarUri } from "@/lib/avatar";
 import { fetchTranscriptText } from "@/lib/fetch-transcript";
 import { presignR2Get, r2KeyFromStored } from "@/lib/r2";
@@ -243,6 +245,99 @@ export const meetingsRouter = createTRPCRouter({
         });
 
       return createdMeeting;
+    }),
+  // C.2: host-only — remove the agent from the live meeting. Its session
+  // closes cleanly (the transcript segment captured so far is saved).
+  removeAgent: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id),
+          ),
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the host can remove the agent",
+        });
+      }
+
+      const participants = await livekitRoomService
+        .listParticipants(input.meetingId)
+        .catch(() => {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The meeting room is not active",
+          });
+        });
+
+      const agentParticipant = participants.find(
+        (participant) => participant.kind === ParticipantInfo_Kind.AGENT,
+      );
+
+      if (!agentParticipant) {
+        return { status: "not_present" as const };
+      }
+
+      await livekitRoomService.removeParticipant(
+        input.meetingId,
+        agentParticipant.identity,
+      );
+
+      return { status: "removed" as const };
+    }),
+  // C.2: host-only — (re-)add the agent to the live meeting, any number of
+  // times. Uses explicit named dispatch (the worker registers as a named
+  // agent, so automatic dispatch is off).
+  addAgent: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id),
+          ),
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the host can add the agent",
+        });
+      }
+
+      const participants = await livekitRoomService
+        .listParticipants(input.meetingId)
+        .catch(() => {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The meeting room is not active",
+          });
+        });
+
+      const hasAgent = participants.some(
+        (participant) => participant.kind === ParticipantInfo_Kind.AGENT,
+      );
+
+      if (hasAgent) {
+        return { status: "already_present" as const };
+      }
+
+      await livekitAgentDispatch.createDispatch(
+        input.meetingId,
+        MEETING_AGENT_NAME,
+      );
+
+      return { status: "dispatched" as const };
     }),
   // MU-2: call-scoped read — deliberately NOT owner-filtered so a signed-in
   // guest can load the call screen from a shared link (Google Meet model).
