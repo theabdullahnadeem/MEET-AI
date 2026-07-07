@@ -14,7 +14,7 @@ import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
 import { livekitAgentDispatch, livekitRoomService } from "@/lib/livekit";
 import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
-import { ParticipantInfo_Kind } from "@livekit/protocol";
+import { ParticipantInfo_Kind, TrackType } from "@livekit/protocol";
 import { generateAvatarUri } from "@/lib/avatar";
 import { fetchTranscriptText } from "@/lib/fetch-transcript";
 import { presignR2Get, r2KeyFromStored } from "@/lib/r2";
@@ -245,6 +245,138 @@ export const meetingsRouter = createTRPCRouter({
         });
 
       return createdMeeting;
+    }),
+  // MU-4: host-only — kick a participant out of the live meeting. Their
+  // admission is re-denied so the kick can't be bypassed by re-fetching a
+  // token; they may knock again and the host decides.
+  kickParticipant: protectedProcedure
+    .input(
+      z.object({ meetingId: z.string(), participantIdentity: z.string() }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id),
+          ),
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the host can remove participants",
+        });
+      }
+
+      if (input.participantIdentity === ctx.auth.user.id) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "You cannot remove yourself",
+        });
+      }
+
+      const participants = await livekitRoomService
+        .listParticipants(input.meetingId)
+        .catch(() => {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The meeting room is not active",
+          });
+        });
+
+      const target = participants.find(
+        (participant) => participant.identity === input.participantIdentity,
+      );
+
+      if (!target) {
+        return { status: "not_present" as const };
+      }
+
+      if (target.kind !== ParticipantInfo_Kind.STANDARD) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Use the AI controls to remove the agent",
+        });
+      }
+
+      await livekitRoomService.removeParticipant(
+        input.meetingId,
+        input.participantIdentity,
+      );
+
+      // Participant identities are user ids — revoke their admission.
+      await db
+        .update(meetingJoinRequests)
+        .set({ status: "denied" })
+        .where(
+          and(
+            eq(meetingJoinRequests.meetingId, input.meetingId),
+            eq(meetingJoinRequests.userId, input.participantIdentity),
+            eq(meetingJoinRequests.status, "approved"),
+          ),
+        );
+
+      return { status: "kicked" as const };
+    }),
+  // MU-4: host-only — mute a participant's microphone for everyone.
+  muteParticipant: protectedProcedure
+    .input(
+      z.object({ meetingId: z.string(), participantIdentity: z.string() }),
+    )
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id })
+        .from(meetings)
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.userId, ctx.auth.user.id),
+          ),
+        );
+
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only the host can mute participants",
+        });
+      }
+
+      const participants = await livekitRoomService
+        .listParticipants(input.meetingId)
+        .catch(() => {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The meeting room is not active",
+          });
+        });
+
+      const target = participants.find(
+        (participant) => participant.identity === input.participantIdentity,
+      );
+
+      if (!target || target.kind !== ParticipantInfo_Kind.STANDARD) {
+        return { status: "not_present" as const };
+      }
+
+      const micTrack = target.tracks.find(
+        (track) => track.type === TrackType.AUDIO && !track.muted,
+      );
+
+      if (!micTrack) {
+        return { status: "no_audio" as const };
+      }
+
+      await livekitRoomService.mutePublishedTrack(
+        input.meetingId,
+        input.participantIdentity,
+        micTrack.sid,
+        true,
+      );
+
+      return { status: "muted" as const };
     }),
   // C.2: host-only — remove the agent from the live meeting. Its session
   // closes cleanly (the transcript segment captured so far is saved).

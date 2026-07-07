@@ -2,7 +2,8 @@ import { db } from "@/db";
 import { agents, meetings, user } from "@/db/schema";
 import { inngest } from "@/inngest/client";
 import { StreamTrancriptItem } from "@/modules/meetings/types";
-import { eq, inArray } from "drizzle-orm";
+import { livekitRoomService } from "@/lib/livekit";
+import { and, eq, inArray } from "drizzle-orm";
 import JSONL from "jsonl-parse-stringify"
 import OpenAI from "openai";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
@@ -202,8 +203,100 @@ export const meetingsProcessing = inngest.createFunction(
       .set({
         summary:(output[0] as TextMessage).content as string,
         status: "completed",
-      }) 
+      })
       .where(eq(meetings.id, event.data.meetingId))
     })
+  },
+);
+
+// MU-4 host-departure policy: when the host leaves an active meeting, it ends
+// for everyone — after a grace period so a page refresh (disconnect +
+// reconnect) doesn't kill the call for the other participants.
+export const meetingsHostLeft = inngest.createFunction(
+  { id: "meetings/host-left" },
+  { event: "meetings/host-left" },
+  async ({ event, step }) => {
+    await step.sleep("grace-period", "20s");
+
+    return await step.run("end-meeting-if-host-still-gone", async () => {
+      let participants;
+      try {
+        participants = await livekitRoomService.listParticipants(
+          event.data.meetingId,
+        );
+      } catch {
+        // Room already closed (everyone left) — nothing to do.
+        return { status: "room already closed" };
+      }
+
+      const hostIsBack = participants.some(
+        (participant) => participant.identity === event.data.hostIdentity,
+      );
+      if (hostIsBack) {
+        return { status: "host rejoined" };
+      }
+
+      try {
+        // Ends the meeting for everyone; room_finished then runs the normal
+        // transcript → summary pipeline (with the finalize fallback below).
+        await livekitRoomService.deleteRoom(event.data.meetingId);
+        return { status: "meeting ended (host left)" };
+      } catch (err) {
+        console.error("[inngest] Failed to end meeting after host left:", err);
+        return { status: "failed to delete room" };
+      }
+    });
+  },
+);
+
+// MU-4: safety net for meetings that reach "processing" without a transcript
+// URL — a force-ended room fires room_finished before the agent's upload
+// lands, and a meeting whose agent never joined has no transcript at all.
+// Waits, then either starts the normal pipeline or completes the meeting
+// without a summary instead of leaving it stuck at "processing" forever.
+export const meetingsFinalize = inngest.createFunction(
+  { id: "meetings/finalize" },
+  { event: "meetings/finalize" },
+  async ({ event, step }) => {
+    await step.sleep("wait-for-transcript-upload", "45s");
+
+    const meeting = await step.run("check-meeting", async () => {
+      const [row] = await db
+        .select({
+          status: meetings.status,
+          transcriptUrl: meetings.transcriptUrl,
+        })
+        .from(meetings)
+        .where(eq(meetings.id, event.data.meetingId));
+      return row ?? null;
+    });
+
+    if (!meeting || meeting.status !== "processing") {
+      return { status: "nothing to do" };
+    }
+
+    if (meeting.transcriptUrl) {
+      await step.sendEvent("start-processing", {
+        name: "meetings/processing",
+        data: {
+          meetingId: event.data.meetingId,
+          transcriptUrl: meeting.transcriptUrl,
+        },
+      });
+      return { status: "processing started" };
+    }
+
+    await step.run("complete-without-summary", async () => {
+      await db
+        .update(meetings)
+        .set({ status: "completed" })
+        .where(
+          and(
+            eq(meetings.id, event.data.meetingId),
+            eq(meetings.status, "processing"),
+          ),
+        );
+    });
+    return { status: "completed without summary" };
   },
 );

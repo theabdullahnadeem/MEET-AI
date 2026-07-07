@@ -37,7 +37,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (meeting.userId !== session.user.id) {
+  const isOwner = meeting.userId === session.user.id;
+
+  if (!isOwner) {
     const [approved] = await db
       .select({ id: meetingJoinRequests.id })
       .from(meetingJoinRequests)
@@ -63,6 +65,8 @@ export async function GET(req: NextRequest) {
     session.user.name,
     userImage,
     roomName,
+    // MU-4: the host gets roomAdmin (kick/mute); guests get normal perms.
+    { roomAdmin: isOwner },
   );
 
   return NextResponse.json({ token });

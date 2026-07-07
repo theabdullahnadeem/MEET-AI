@@ -1,11 +1,12 @@
 import { serve } from "inngest/next";
 import { inngest } from "../../../inngest/client";
-import { meetingsProcessing } from "@/inngest/function";
+import {
+  meetingsFinalize,
+  meetingsHostLeft,
+  meetingsProcessing,
+} from "@/inngest/function";
 
-// Create an API that serves zero functions
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [
-   meetingsProcessing
-  ],
+  functions: [meetingsProcessing, meetingsHostLeft, meetingsFinalize],
 });

@@ -132,9 +132,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: "ok" });
   }
 
-  // The room closed (fires once, after it empties out past emptyTimeout). This is
-  // the multi-user-safe end signal — we deliberately do NOT end on participant_left,
-  // so one of several humans leaving never ends the meeting for everyone.
+  // MU-4 host-departure policy (explicit product decision, reversing the
+  // original "never end on participant_left" design): when the HOST leaves an
+  // active meeting, it ends for everyone — after a grace period handled by
+  // Inngest, so a page refresh lets the host reconnect without killing the call.
+  if (event.event === "participant_left") {
+    if (!roomName) {
+      return NextResponse.json({ status: "skipped: no room name" });
+    }
+    if (event.participant?.kind !== ParticipantInfo_Kind.STANDARD) {
+      return NextResponse.json({ status: "skipped: non-human participant" });
+    }
+
+    const identity = event.participant?.identity;
+    const [meeting] = await db
+      .select({ userId: meetings.userId, status: meetings.status })
+      .from(meetings)
+      .where(eq(meetings.id, roomName));
+
+    if (
+      meeting &&
+      meeting.status === MeetingStatus.ACTIVE &&
+      identity === meeting.userId
+    ) {
+      await inngest.send({
+        name: "meetings/host-left",
+        data: { meetingId: roomName, hostIdentity: identity },
+      });
+    }
+
+    return NextResponse.json({ status: "ok" });
+  }
+
+  // The room closed (fires once, after it empties out past emptyTimeout, or
+  // immediately when the room is deleted — agent guardrails / host departure).
   if (event.event === "room_finished") {
     if (!roomName) {
       return NextResponse.json({ status: "skipped: no room name" });
@@ -159,6 +190,15 @@ export async function POST(req: NextRequest) {
           meetingId: meeting.id,
           transcriptUrl: meeting.transcriptUrl,
         },
+      });
+    } else if (meeting) {
+      // MU-4: no transcript yet. A force-ended room (host left / guardrails)
+      // fires room_finished before the agent's upload lands — or the agent
+      // never joined at all. Schedule a delayed finalize instead of leaving
+      // the meeting stuck at "processing" forever.
+      await inngest.send({
+        name: "meetings/finalize",
+        data: { meetingId: meeting.id },
       });
     }
 
