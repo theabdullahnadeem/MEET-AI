@@ -219,7 +219,13 @@ seamless audio/subtitle translation for others.
 Feature batch requested after multi‑user shipped. Each item lists how it fits the current
 architecture and any hard constraints.
 
-### C.1 Overlapping speech — listen to everyone, then answer
+### C.1 Overlapping speech — listen to everyone, then answer  · *Deferred → v1.1*
+**Decision (July 2026): deliberately deferred — ships as the first post‑launch update (v1.1),
+after the rest of Part C is complete and security checks are done.** Not a defect: turn‑based
+conversation is fully covered by active‑speaker switching; runtime cost of the fix is ~zero
+(audio tokens bill by time, and a mixed stream is still one stream) — this is a quality/polish
+upgrade. The interim tuning below rides along with C.3 in the meantime.
+
 When two people talk at the same time, the agent should hold its reply, hear **both** of them
 out, and then answer in a way that **involves/addresses everyone** — instead of reacting to
 only one speaker.
@@ -227,10 +233,15 @@ only one speaker.
   to the realtime model. Active‑speaker re‑linking (shipped July 2026) means the agent hears
   whoever is loudest, but genuinely simultaneous speech from a second person is not heard.
 - **Paths:** (a) use the SDK's `OverlappingSpeech` event to delay the reply until turns settle
-  (partial — still single‑track); (b) **server‑side audio mixing**: mix all human tracks into
-  one stream fed to the model (a custom audio input; the real fix, heavier build); (c) wait for
-  upstream multi‑participant support in `@livekit/agents`. Interim tuning: longer
-  `silence_duration_ms` so the agent stops jumping in early.
+  (partial — still single‑track); (b) **server‑side audio mixing — the real fix, and confirmed
+  buildable today**: `@livekit/rtc-node` (installed, 0.13.30) ships an `AudioMixer` that
+  combines multiple audio streams into one; subscribe to every human's mic, mix, and feed the
+  session the mixed stream as a custom audio input. Bonus: VAD then only sees silence once
+  *everyone* stops talking, so "wait, then answer" falls out naturally. Trade‑off: a mixed
+  stream can't attribute words per speaker — transcript labels fall back to the active‑speaker
+  heuristic. Multi‑day agent build, not a quick PR. (c) upstream multi‑participant support in
+  `@livekit/agents` (1.5.0 still uses the single‑linked‑participant model). Interim tuning:
+  longer `silence_duration_ms` so the agent stops jumping in early.
 - Prompt‑side: instruct the agent to address participants by name and engage the whole group.
 
 ### C.2 Add/remove the agent mid‑meeting (as often as needed)
@@ -296,8 +307,9 @@ Download buttons on the completed‑meeting view:
 3. **C.5 English transcript pipeline** — pipeline‑only, independent.
 4. **C.2 Add/remove agent** — needs the named‑dispatch switch + transcript merging.
 5. **C.7 2FA** — independent, any time.
-6. **C.1 Overlapping speech** — hardest (audio mixing or upstream SDK); do last or when the
-   SDK catches up. Pairs with MU‑4/MU‑5 (host controls + People panel) from Part A.
+6. **C.1 Overlapping speech** — **deferred by decision to v1.1**, the first post‑launch update
+   (see C.1). Its interim tuning (silence threshold + group‑aware prompt) ships with C.3.
+   Pairs with MU‑4/MU‑5 (host controls + People panel) from Part A.
 
 ---
 
