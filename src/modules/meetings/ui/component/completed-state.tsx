@@ -10,11 +10,14 @@ import {
   FileTextIcon,
   FileVideo2Icon,
   ClockFadingIcon,
+  DownloadIcon,
 } from "lucide-react";
 import { GeneratedAvatar } from "@/components/generated-avatar";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/utils";
+import { downloadTextFile, sanitizeFilename } from "@/lib/export-file";
 import { Transcript } from "./transcript";
 import { ChatProvider } from "./chat-provider";
 
@@ -23,6 +26,21 @@ interface Props {
 }
 
 export const CompletedState = ({ data }: Props) => {
+  // C.6: export the summary as a markdown file.
+  const downloadSummary = () => {
+    if (!data.summary) return;
+    const header =
+      `# ${data.name}\n\n` +
+      `_Agent: ${data.agent.name}` +
+      (data.startedAt ? ` · ${format(data.startedAt, "PPP")}` : "") +
+      `_\n\n`;
+    downloadTextFile(
+      `${sanitizeFilename(data.name)} summary.md`,
+      header + data.summary,
+      "text/markdown",
+    );
+  };
+
   return (
     <div className="flex flex-col gap-y-4">
       <Tabs defaultValue="summary">
@@ -65,10 +83,10 @@ export const CompletedState = ({ data }: Props) => {
           <ChatProvider meetingId={data.id} meetingName={data.name} />
         </TabsContent>
         <TabsContent value="transcript">
-          <Transcript meetingId={data.id} />
+          <Transcript meetingId={data.id} meetingName={data.name} />
         </TabsContent>
         <TabsContent value="recording">
-          <div className="bg-white rounded-lg border px-4 py-5">
+          <div className="bg-white rounded-lg border px-4 py-5 flex flex-col gap-y-4">
             {/* SEC-5: served via the authenticated media route (302 → short-lived
                 presigned R2 URL) instead of a permanent public bucket URL. */}
             <video
@@ -76,6 +94,17 @@ export const CompletedState = ({ data }: Props) => {
               className="w-full rounded-lg"
               controls
             />
+            <div>
+              <Button variant="outline" size="sm" asChild>
+                {/* C.6: same authenticated route, attachment variant. */}
+                <a
+                  href={`/api/media/recording?meetingId=${encodeURIComponent(data.id)}&download=1`}
+                >
+                  <DownloadIcon />
+                  Download recording
+                </a>
+              </Button>
+            </div>
           </div>
         </TabsContent>
         <TabsContent value="summary">
@@ -96,9 +125,20 @@ export const CompletedState = ({ data }: Props) => {
                         </Link>{" "}
                         <p>{data.startedAt ? format(data.startedAt, "PPP"): ""}</p>
                     </div>
-                    <div className="flex gap-x-2 items-center">
-                        <SparklesIcon />
-                        <p>General Summary</p>
+                    <div className="flex gap-x-2 items-center justify-between">
+                        <div className="flex gap-x-2 items-center">
+                            <SparklesIcon />
+                            <p>General Summary</p>
+                        </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={downloadSummary}
+                            disabled={!data.summary}
+                        >
+                            <DownloadIcon />
+                            Download
+                        </Button>
                     </div>
                     <Badge
                         variant="outline"

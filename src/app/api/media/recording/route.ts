@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
   const [meeting] = await db
     .select({
       id: meetings.id,
+      name: meetings.name,
       userId: meetings.userId,
       recordingUrl: meetings.recordingUrl,
     })
@@ -60,9 +61,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "No recording" }, { status: 404 });
   }
 
+  // C.6: ?download=1 serves the file as an attachment instead of inline
+  // playback, named after the meeting.
+  const download = req.nextUrl.searchParams.get("download") === "1";
+  const safeName =
+    meeting.name.replace(/[^\p{L}\p{N} _-]/gu, "").trim() || "meeting";
+
   // 1h TTL so long playback sessions and seek (range) requests don't outlive
   // the URL mid-viewing.
-  const url = await presignR2Get(r2KeyFromStored(meeting.recordingUrl), 3600);
+  const url = await presignR2Get(
+    r2KeyFromStored(meeting.recordingUrl),
+    3600,
+    download ? `${safeName} recording.mp4` : undefined,
+  );
 
   return NextResponse.redirect(url, 302);
 }

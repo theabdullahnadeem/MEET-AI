@@ -42,14 +42,25 @@ export function r2KeyFromStored(stored: string): string {
  * Mint a short-lived presigned GET URL for an R2 object key.
  * Default TTL 10 minutes; the recording player uses 1 hour so long playback
  * sessions (and seek/range requests) don't outlive the URL.
+ * Pass `downloadAs` to serve the object as a file download (C.6 exports) —
+ * R2 then sends a Content-Disposition: attachment header with that filename.
  */
 export async function presignR2Get(
   key: string,
   expiresInSeconds = 600,
+  downloadAs?: string,
 ): Promise<string> {
   return getSignedUrl(
     r2Client,
-    new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key }),
+    new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET,
+      Key: key,
+      ...(downloadAs
+        ? {
+            ResponseContentDisposition: `attachment; filename="${downloadAs.replace(/["\r\n\\]/g, "")}"`,
+          }
+        : {}),
+    }),
     { expiresIn: expiresInSeconds },
   );
 }
