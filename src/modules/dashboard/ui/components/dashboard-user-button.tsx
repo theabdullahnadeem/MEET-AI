@@ -1,8 +1,11 @@
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { GeneratedAvatar } from "@/components/generated-avatar";
-import { ChevronDownIcon, CreditCardIcon, LogOutIcon } from "lucide-react";
+import { ChevronDownIcon, CreditCardIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+import { TwoFactorDialog } from "@/modules/auth/ui/components/two-factor-dialog";
 
 import {
   DropdownMenu,
@@ -28,6 +31,8 @@ export const DashboardUserButton = () => {
   const isMobile = useIsMobile();
   const router = useRouter();
   const { data, isPending } = authClient.useSession();
+  // C.7: security settings (two-factor authentication).
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   const onLogout = () => {
     authClient.signOut({
@@ -45,6 +50,8 @@ export const DashboardUserButton = () => {
 
   if (isMobile) {
     return (
+      <>
+      <TwoFactorDialog open={securityOpen} onOpenChange={setSecurityOpen} />
       <Drawer>
         <DrawerTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
           {data.user.image ? (
@@ -77,14 +84,18 @@ export const DashboardUserButton = () => {
             </DrawerHeader>
             <DrawerFooter>
                 <Button variant={"outline"} className="w-full" onClick={()=> authClient.customer.portal()}> <CreditCardIcon className="size-4 text-black" />Billing</Button>
+                <Button variant={"outline"} className="w-full" onClick={()=> setSecurityOpen(true)}> <ShieldCheckIcon className="size-4 text-black" />Security</Button>
                 <Button variant={"outline"} className="w-full" onClick={onLogout}> <LogOutIcon className="size-4 text-black" />Logout</Button>
             </DrawerFooter>
         </DrawerContent>
       </Drawer>
+      </>
     );
   }
 
   return (
+    <>
+    <TwoFactorDialog open={securityOpen} onOpenChange={setSecurityOpen} />
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
         {data.user.image ? (
@@ -121,6 +132,13 @@ export const DashboardUserButton = () => {
           <CreditCardIcon className="size-4" />
         </DropdownMenuItem>
         <DropdownMenuItem
+          onClick={() => setSecurityOpen(true)}
+          className="cursor-pointer flex items-center justify-between"
+        >
+          Security
+          <ShieldCheckIcon className="size-4" />
+        </DropdownMenuItem>
+        <DropdownMenuItem
           onClick={onLogout}
           className="cursor-pointer flex items-center justify-between"
         >
@@ -129,5 +147,6 @@ export const DashboardUserButton = () => {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    </>
   );
 };

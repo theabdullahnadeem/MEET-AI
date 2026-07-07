@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { db } from "@/db"; 
+import { twoFactor } from "better-auth/plugins";
+import { db } from "@/db";
 import * as schema from "@/db/schema";
 import {polar, checkout, portal} from "@polar-sh/better-auth"
 import { polarClient } from "./polar";
@@ -10,8 +11,10 @@ if (!process.env.BETTER_AUTH_SECRET) {
 }
 
 export const auth = betterAuth({
+    // Shown as the issuer in authenticator apps (C.7 TOTP).
+    appName: "MEET-AI",
     secret: process.env.BETTER_AUTH_SECRET,
-    plugins: [polar({
+    plugins: [twoFactor(), polar({
         client: polarClient,
         createCustomerOnSignUp: true,
         use: [

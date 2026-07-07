@@ -8,12 +8,29 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
+  // C.7: managed by the better-auth twoFactor plugin.
+  twoFactorEnabled: boolean("two_factor_enabled").default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")
     .defaultNow()
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
 });
+
+// C.7: better-auth twoFactor plugin storage — TOTP secret + hashed backup
+// codes per user.
+export const twoFactor = pgTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+  },
+  (table) => [index("two_factor_userId_idx").on(table.userId)],
+);
 
 export const session = pgTable(
   "session",
