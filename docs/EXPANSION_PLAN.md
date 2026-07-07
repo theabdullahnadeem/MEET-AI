@@ -2,7 +2,8 @@
 
 Forward‑looking feature roadmap. **Part A** is the near‑term, already‑decided feature:
 Google‑Meet‑style **multi‑user meetings** with a shared AI agent. **Part B** is the longer‑term
-enhancement backlog.
+enhancement backlog. **Part C** is the in‑call agent & platform enhancement batch requested
+July 2026 (agent behaviour, language handling, exports, 2FA).
 
 > Read alongside `ARCHITECTURE.md` (how the app works today) and `SECURITY_FIX_PLAN.md`
 > (the access‑control fix that Part A builds on).
@@ -96,14 +97,34 @@ most one live request per meeting — preventing duplicate pending rows and stal
 **Signaling:** polling is fine for v1 (the app already uses React Query everywhere). A later
 optimization can push the knock over a LiveKit data channel since the host is already connected.
 
-### MU‑4 — Host controls (optional)
-Mute/remove participants via `RoomServiceClient.mutePublishedTrack` / `removeParticipant`,
-exposed only to the `roomAdmin` host. Pairs naturally with the multi‑tile grid.
+### MU‑4 — Host controls
+- **Host token**: the creator's token gets `roomAdmin: true` (today `createLiveKitToken`
+  hardcodes `roomAdmin: false` for everyone).
+- **Kick / mute participants**: host‑only tRPC mutations (verify meeting ownership) that call
+  `RoomServiceClient.removeParticipant` / `mutePublishedTrack`; kick buttons in the People panel
+  (MU‑5). A kicked guest's join request should be set back to `denied` so they can't
+  immediately re‑fetch a token.
+- **Host‑departure policy (requested)**: when the **host** leaves, the meeting ends for
+  **everyone**. Note this deliberately reverses the PR‑5 design ("only `room_finished` ends the
+  meeting") — implement as an explicit policy: on `participant_left` where the identity equals
+  `meeting.userId`, delete the room (webhook‑side `RoomServiceClient.deleteRoom`, which fires the
+  normal `room_finished` → transcript/summary pipeline). Consider a per‑meeting toggle
+  ("end when host leaves" on/off) so both behaviours stay available.
 
-### MU‑5 — Multi‑user UI polish
-Participant name labels, "waiting room" list for the host, a share‑link affordance, and an
-active‑speaker layout. The agent tile should be visually distinguished (and excluded from the
-human participant count).
+### MU‑5 — Google‑Meet‑style in‑call UI
+- **People panel** (requested): a persistent top‑bar button with a badge count opening a side
+  panel that shows **(a) everyone currently in the meeting** and **(b) the waiting‑to‑join
+  list**. Today's floating knock panel only renders while pending requests exist — if the host
+  misses it, nothing indicates someone is (still) waiting. The panel makes knocks persistent and
+  impossible to lose; Admit/Deny move in here (with the badge + a chime on new knocks).
+- **In‑call chat** (requested): a Google‑Meet‑style chat side panel during the call. Cheapest
+  path: LiveKit **data channel** messages (ephemeral, in‑memory); alternately reuse the
+  meeting's Stream Chat channel so in‑call chat persists into the post‑meeting "Ask AI" tab —
+  decide when building.
+- Participant **name labels**, an **active‑speaker layout**, and the agent tile visually
+  distinguished (and excluded from the human participant count).
+- ~~Share‑link affordance~~ — **shipped July 2026** (invite button in the call header and on
+  the meeting page).
 
 ## A.5 Decisions still open
 - **Guest identity:** require sign‑in (current model) vs. allow anonymous guests (bigger lift —
@@ -190,6 +211,93 @@ seamless audio/subtitle translation for others.
    (B.4's per‑speaker metrics wait on `speakerId`; ship the aggregate version first — see A.5).
 3. **B.1 Personal AI Memory** and **B.5 Action‑Item Delegation** — bigger subsystems.
 4. **B.3 Fact‑Checking** and **B.6 Translation** — most infrastructure‑heavy; do last.
+
+---
+
+# Part C — In‑call agent & platform enhancements (requested July 2026)
+
+Feature batch requested after multi‑user shipped. Each item lists how it fits the current
+architecture and any hard constraints.
+
+### C.1 Overlapping speech — listen to everyone, then answer
+When two people talk at the same time, the agent should hold its reply, hear **both** of them
+out, and then answer in a way that **involves/addresses everyone** — instead of reacting to
+only one speaker.
+- **Hard constraint:** the agents SDK (`RoomIO`) forwards **one participant's audio at a time**
+  to the realtime model. Active‑speaker re‑linking (shipped July 2026) means the agent hears
+  whoever is loudest, but genuinely simultaneous speech from a second person is not heard.
+- **Paths:** (a) use the SDK's `OverlappingSpeech` event to delay the reply until turns settle
+  (partial — still single‑track); (b) **server‑side audio mixing**: mix all human tracks into
+  one stream fed to the model (a custom audio input; the real fix, heavier build); (c) wait for
+  upstream multi‑participant support in `@livekit/agents`. Interim tuning: longer
+  `silence_duration_ms` so the agent stops jumping in early.
+- Prompt‑side: instruct the agent to address participants by name and engage the whole group.
+
+### C.2 Add/remove the agent mid‑meeting (as often as needed)
+Host can dismiss the agent and bring it back at any point, any number of times.
+- **Remove:** host‑only tRPC mutation → `RoomServiceClient.removeParticipant(agent identity)`
+  (the agent's shutdown callback saves the transcript captured so far).
+- **Re‑add:** requires **explicit agent dispatch** (`AgentDispatchClient.createDispatch`), which
+  means switching the worker from automatic dispatch to a **named agent** (`agentName` in
+  `WorkerOptions` + `lk agent deploy` config change) — automatic dispatch only fires on the
+  first participant join.
+- **Transcript gotcha:** each agent session currently **overwrites**
+  `transcripts/<meetingId>.jsonl` on shutdown. Multiple sessions per meeting must **append/merge**
+  (per‑session segment keys merged by the summariser, or download‑concat‑upload).
+- Idle‑timeout guardrail must be agent‑session‑scoped (a meeting without the agent shouldn't be
+  auto‑ended by the agent — the duration cap still applies via room‑level enforcement).
+
+### C.3 Agent mute / answer‑only‑when‑asked
+Three agent modes, switchable in‑call by the host:
+1. **Active** (today) — answers whenever it detects a turn.
+2. **Muted note‑taker** — keeps listening **and transcribing**, never speaks.
+3. **On‑request** — silent until explicitly asked (a "Ask AI" button, and later a wake‑phrase).
+- **Fits:** OpenAI Realtime supports VAD‑without‑auto‑response (`turnDetection` with
+  `createResponse: false`) — transcription continues, replies happen only via a manual
+  `session.generateReply()`. Mode switches ride a **LiveKit data channel** message from the
+  host UI to the agent; agent publishes its current mode back (for a badge on the agent tile).
+- This is the highest‑leverage C‑item: it fixes "the agent interrupts human conversation".
+
+### C.4 Multi‑screenshare (several people sharing at once)
+- LiveKit already supports **N concurrent screenshare tracks**, and both the call grid and the
+  recording template render every `ScreenShare` track — so this is likely *functional* today.
+- Work: **verify** concurrent shares end‑to‑end, then polish layout — a focus layout when 1+
+  screens are shared ("X's screen" labels, screens enlarged, cameras in a strip).
+
+### C.5 Multilingual speech, English‑only transcript
+Users code‑switch (Urdu/Hindi/English/Korean in one meeting) and the transcript comes out
+mixed‑language because `whisper-1` auto‑detects per utterance. Requirement: the agent keeps
+**conversing in whatever language is spoken** (the realtime model already does), but the stored
+transcript — and therefore the summary and "Ask AI" grounding — must be **pure English**.
+- **Recommended:** translate **once, offline, in the Inngest pipeline** — a translate step
+  (GPT‑4o‑mini, batched lines) before `add-speakers`/save, so the stored/displayed transcript
+  and the summary input are English. Cheap, no latency added to the live call.
+- Alternative: translate per‑utterance in the agent at capture time (adds live cost/latency —
+  only if "live English captions" become a requirement).
+- Agent lines can also arrive mixed‑language — translate those too.
+
+### C.6 Export / download: transcript, summary, recording
+Download buttons on the completed‑meeting view:
+- **Transcript** → `.txt`/`.pdf` (speaker‑labelled lines; client‑side generation or a tiny route).
+- **Summary** → `.md`/`.pdf`.
+- **Recording** → `.mp4` via the existing presigned‑URL route with a download variant
+  (`ResponseContentDisposition: attachment` on the presign).
+- Access follows the participant‑access rules (owner OR admitted). Quick win, no schema changes.
+
+### C.7 Two‑factor authentication (authenticator apps)
+- better‑auth ships a **`twoFactor` plugin**: TOTP (Google Authenticator/Authy/1Password),
+  backup codes, optional trusted devices. Server plugin + `twoFactorClient` on the client,
+  enrol flow (QR code) in a new account‑security settings page, challenge step on sign‑in.
+  Adds a table → `npm run db:push`.
+
+## C.8 Suggested order
+1. **C.6 Exports** + **C.4 multi‑screenshare verify** — quick wins.
+2. **C.3 Agent mute/on‑request** — biggest UX complaint, moderate build.
+3. **C.5 English transcript pipeline** — pipeline‑only, independent.
+4. **C.2 Add/remove agent** — needs the named‑dispatch switch + transcript merging.
+5. **C.7 2FA** — independent, any time.
+6. **C.1 Overlapping speech** — hardest (audio mixing or upstream SDK); do last or when the
+   SDK catches up. Pairs with MU‑4/MU‑5 (host controls + People panel) from Part A.
 
 ---
 
