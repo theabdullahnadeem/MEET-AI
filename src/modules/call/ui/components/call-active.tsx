@@ -2,17 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import {
-  GridLayout,
-  ParticipantTile,
-  RoomAudioRenderer,
-  useTracks,
-  ControlBar,
-} from "@livekit/components-react";
-import { Track } from "livekit-client";
+import { RoomAudioRenderer, ControlBar } from "@livekit/components-react";
 
 import { ShareInviteButton } from "@/components/share-invite-button";
 import { JoinRequestsPanel } from "./join-requests-panel";
+import { MeetingLayout } from "./meeting-layout";
 
 interface Props {
   meetingName: string;
@@ -21,14 +15,6 @@ interface Props {
 }
 
 export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false },
-  );
-
   return (
     <div className="relative flex flex-col gap-4 p-4 h-full overflow-hidden text-white">
       {/* MU-3: host-only waiting-room panel (admit/deny knocks). */}
@@ -48,9 +34,8 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
           className="ml-auto bg-white/10 hover:bg-white/20 text-white hover:text-white"
         />
       </div>
-      <GridLayout tracks={tracks} className="flex-1 min-h-0">
-        <ParticipantTile />
-      </GridLayout>
+      {/* C.4: screens take the stage when shared (supports several at once). */}
+      <MeetingLayout />
       <RoomAudioRenderer />
       <div className="shrink-0 bg-[#101213] rounded-full px-4">
         <ControlBar

@@ -2,16 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { Room, Track } from "livekit-client";
+import { Room } from "livekit-client";
 import {
-  GridLayout,
   LiveKitRoom,
-  ParticipantTile,
   RoomAudioRenderer,
   useRoomInfo,
-  useTracks,
 } from "@livekit/components-react";
 import EgressHelper from "@livekit/egress-sdk";
+
+import { MeetingLayout } from "@/modules/call/ui/components/meeting-layout";
 
 import "@livekit/components-styles";
 
@@ -38,15 +37,6 @@ const RecordingView = () => {
     }
   }, [roomInfo.metadata]);
 
-  // Mirror CallActive: camera tiles (with placeholders) + screen shares.
-  const tracks = useTracks(
-    [
-      { source: Track.Source.Camera, withPlaceholder: true },
-      { source: Track.Source.ScreenShare, withPlaceholder: false },
-    ],
-    { onlySubscribed: false },
-  );
-
   return (
     <div className="flex flex-col gap-4 p-4 h-screen overflow-hidden text-white bg-[#0a0a0a]">
       <div className="shrink-0 bg-[#101213] rounded-full p-4 flex items-center gap-4">
@@ -55,9 +45,9 @@ const RecordingView = () => {
         </div>
         <h4 className="text-base">{meetingName ?? "Meeting"}</h4>
       </div>
-      <GridLayout tracks={tracks} className="flex-1 min-h-0">
-        <ParticipantTile />
-      </GridLayout>
+      {/* C.4: same stage component as the live call — recordings match the
+          meeting, including multiple simultaneous screen shares. */}
+      <MeetingLayout />
       {/* Egress captures the page's audio output — this renders it. */}
       <RoomAudioRenderer />
     </div>
