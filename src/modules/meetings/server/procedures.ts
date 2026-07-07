@@ -234,6 +234,8 @@ export const meetingsRouter = createTRPCRouter({
           metadata: JSON.stringify({
             meetingId: createdMeeting.id,
             meetingName: createdMeeting.name,
+            // C.3: lets the agent verify that mode switches come from the host.
+            hostUserId: ctx.auth.user.id,
             agentId: existingAgent.id,
             agentName: existingAgent.name,
             agentInstructions: existingAgent.instructions,
