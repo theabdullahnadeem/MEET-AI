@@ -235,6 +235,21 @@ export default defineAgent({
       },
     });
 
+    // K.2: a one-sentence spoken greeting right after joining. The session
+    // runs with create_response:false, so without this the agent would sit in
+    // silence until someone happened to speak first — greeting immediately
+    // confirms it's present and listening (also when the host re-adds it
+    // mid-meeting).
+    try {
+      session.generateReply({
+        instructions:
+          "Greet the participants in one short sentence and let them know " +
+          "you're here to help. Do not ask a question — let the meeting continue.",
+      });
+    } catch (err) {
+      console.error("[Agent] Greeting failed:", err);
+    }
+
     // --- Multi-user audio routing -------------------------------------------
     // RoomIO forwards only ONE participant's audio to the realtime model (it
     // links to the first participant by default), so in multi-user meetings
