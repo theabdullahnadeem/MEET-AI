@@ -111,7 +111,7 @@ export const SignUpView = () => {
             <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 md:p-8">
               <div className="flex flex-col gap-6">
                 <div className="flex flex-col items-center text-center">
-                  <h1 className="text-2xl font-bold">Let's Get Started</h1>
+                  <h1 className="text-2xl font-bold">Let&apos;s Get Started</h1>
                   <p className="text-muted-foreground text-balance">
                     Create an account
                   </p>

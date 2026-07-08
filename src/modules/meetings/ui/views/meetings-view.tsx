@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/empty-state";
 import { useMeetingsFilter } from "../../hooks/use-meetings-filter";
 import { useRouter } from "next/navigation";
 import { DataPagination } from "@/components/data-pagination";
+import { MeetingGetMany } from "../../types";
 
 export const MeetingsView = () => {
   const trpc = useTRPC();
@@ -21,7 +22,7 @@ export const MeetingsView = () => {
     }),
   ) as {
     data: {
-      items: any[];
+      items: MeetingGetMany;
       total: number;
       totalPages: number;
     };

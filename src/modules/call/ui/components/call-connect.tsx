@@ -53,6 +53,9 @@ export const CallConnect = ({ meetingId, meetingName, isOwner }: Props) => {
   }, [meetingId]);
 
   useEffect(() => {
+    // False positive: fetchToken awaits the network before any setState, so
+    // this cannot cascade synchronous renders.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchToken();
   }, [fetchToken]);
 
