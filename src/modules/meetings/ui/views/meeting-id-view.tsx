@@ -31,9 +31,21 @@ export const MeetingIdView = ({ meetingId }: Props) => {
   const [updateMeetingDialogOpen, setUpdateMeetingDialogOpen] = useState(false);
 
   const router = useRouter();
-  const { data } = useSuspenseQuery(
-    trpc.meeting.getOne.queryOptions({ id: meetingId }),
-  ) as { data: MeetingGetOne };
+  const { data } = useSuspenseQuery({
+    ...trpc.meeting.getOne.queryOptions({ id: meetingId }),
+    // K.1: status advances server-side (upcoming→active via webhook,
+    // active→processing on room_finished, processing→completed by Inngest),
+    // so poll while the meeting is in a non-terminal state — the page then
+    // reflects each transition without a manual refresh.
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "upcoming" ||
+        status === "active" ||
+        status === "processing"
+        ? 5000
+        : false;
+    },
+  }) as { data: MeetingGetOne };
 
   const [RemoveConfirmation, confirmRemove] = useConfirm(
     "Are you sure?",
