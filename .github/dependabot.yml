@@ -8,6 +8,19 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Deliberately pinned — bumps here must be their own reviewed PR:
+      # - agents SDK: the worker relies on internals (session._roomIO) and
+      #   event names verified against 1.4.5; any bump needs `lk agent deploy`
+      #   plus a live re-verification of the agent.
+      - dependency-name: "@livekit/agents"
+      - dependency-name: "@livekit/agents-plugin-openai"
+      # - polar better-auth plugin: 1.8.0 is the last version on @polar-sh/sdk
+      #   ^0.42 AND patches/@polar-sh+better-auth+1.8.0.patch is keyed to the
+      #   exact version — a bump breaks patch-package (this kept failing the
+      #   grouped minor-and-patch PR).
+      - dependency-name: "@polar-sh/better-auth"
+      - dependency-name: "@polar-sh/sdk"
     groups:
       # Batch routine minor/patch noise into one PR; majors stay separate.
       minor-and-patch:
