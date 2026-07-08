@@ -55,6 +55,19 @@ async function startRecording(roomName: string) {
   }
 }
 
+// C.2: the worker is a NAMED agent (no automatic dispatch), so the first
+// human joining is when we explicitly send the agent in.
+async function dispatchAgent(roomName: string) {
+  try {
+    await livekitAgentDispatch.createDispatch(roomName, MEETING_AGENT_NAME);
+    console.log(`[livekit-webhook] Dispatched agent to room: ${roomName}`);
+  } catch (err) {
+    // Non-fatal — the meeting continues without the agent; the host can
+    // add it from the call header.
+    console.error("[livekit-webhook] Failed to dispatch agent:", err);
+  }
+}
+
 // The LiveKit room is named after the meeting id (see meeting.create).
 export async function POST(req: NextRequest) {
   // SEC-4 / F-04: rate-limit per IP (no-op until Upstash is configured).
@@ -115,18 +128,9 @@ export async function POST(req: NextRequest) {
     // The update only changes a row on the FIRST human join (status was
     // upcoming), so recording starts exactly once per meeting.
     if (activated) {
-      await startRecording(roomName);
-
-      // C.2: the worker is a NAMED agent now (no automatic dispatch), so the
-      // first human joining is when we explicitly send the agent in.
-      try {
-        await livekitAgentDispatch.createDispatch(roomName, MEETING_AGENT_NAME);
-        console.log(`[livekit-webhook] Dispatched agent to room: ${roomName}`);
-      } catch (err) {
-        // Non-fatal — the meeting continues without the agent; the host can
-        // add it from the call header.
-        console.error("[livekit-webhook] Failed to dispatch agent:", err);
-      }
+      // K.2: dispatch the agent CONCURRENTLY with the recording — its arrival
+      // shouldn't wait for egress spin-up. Each branch is non-fatal on its own.
+      await Promise.all([dispatchAgent(roomName), startRecording(roomName)]);
     }
 
     return NextResponse.json({ status: "ok" });

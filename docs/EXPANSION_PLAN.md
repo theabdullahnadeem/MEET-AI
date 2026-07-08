@@ -329,6 +329,8 @@ React Query with no `refetchInterval` or realtime subscription, so the client ca
   Frontend Updates".
 - **Files:** `src/modules/meetings/server/procedures.ts` (`getOne`) and the meeting‑detail view
   (`meeting-id-view` + the per‑status state components).
+- **Fixed July 2026:** `getOne` on the meeting detail page polls every 5s while the status is
+  non‑terminal (`upcoming`/`active`/`processing`) and stops once `completed`/`cancelled`.
 
 ### K.2 Agent join timing — should join at a natural time (not too late, not too early)
 The AI agent should enter the call at a **normal** moment: late enough that it isn't added before
@@ -341,6 +343,12 @@ timing can feel off in either direction.
   `ctx.connect()` → `session.start`) and the lobby/connect timing on the client
   (`src/modules/call/ui/components/call-connect.tsx`). The `fix/call-prejoin-agent-timing` branch
   is related prior art.
+- **Addressed July 2026:** the early phantom join was structurally removed by C.2's named
+  dispatch (the webhook only dispatches after the first human is in the room). Remaining lag
+  reduced by dispatching the agent **concurrently** with egress spin‑up in the LiveKit webhook,
+  and the agent now speaks a **one‑sentence greeting** on session start (with
+  `create_response:false` it would otherwise stay silent until spoken to). Verify feel during
+  the full E2E pass.
 
 ---
 
