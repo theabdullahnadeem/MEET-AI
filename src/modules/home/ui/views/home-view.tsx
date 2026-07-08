@@ -137,9 +137,13 @@ export const HomeView = ({ userName }: Props) => {
   const firstName = userName.split(" ")[0] || userName;
 
   return (
-    <div className="flex-1 overflow-y-auto py-4 px-4 md:px-8 flex flex-col gap-y-4">
+    // No overflow-y-auto here: a fixed-height scroll container would let its
+    // flex children with overflow-hidden (the hero, the list cards) be
+    // flex-shrunk to fit the viewport, clipping their content. The page
+    // scrolls the document instead, like the meetings/agents views.
+    <div className="flex-1 py-4 px-4 md:px-8 flex flex-col gap-y-4">
       {/* Hero — same brand gradient as the auth panels and call screens. */}
-      <div className="relative overflow-hidden rounded-xl bg-radial from-sidebar-accent to-sidebar text-white p-6 md:p-10">
+      <div className="relative shrink-0 overflow-hidden rounded-xl bg-radial from-sidebar-accent to-sidebar text-white p-6 md:p-10">
         <div className="relative z-10 flex flex-col gap-y-4 max-w-2xl">
           <h1 className="text-2xl md:text-3xl font-semibold">
             Welcome back, {firstName}
