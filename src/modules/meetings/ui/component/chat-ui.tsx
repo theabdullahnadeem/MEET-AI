@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import {useMutation} from "@tanstack/react-query";
-import type { Channel as StreamChannel } from "stream-chat";
 import {
     useCreateChatClient,
     Chat,
@@ -18,19 +17,17 @@ import "stream-chat-react/dist/css/v2/index.css";
 
 interface Props {
     meetingId: string;
-    meetingName: string;
     userId: string;
     userName: string;
     userImage: string | undefined;
 }
 
-export const ChatUI = ({meetingId, meetingName, userId, userName, userImage}: Props) => {
+export const ChatUI = ({meetingId, userId, userName, userImage}: Props) => {
     const trpc = useTRPC();
     const { mutateAsync: generateChatToken } = useMutation(
         trpc.meeting.generateChatToken.mutationOptions(),
     );
 
-    const [channel, setChannel] = useState<StreamChannel>();
     const client = useCreateChatClient({
         apiKey: process.env.NEXT_PUBLIC_STREAM_CHAT_API_KEY!,
         tokenOrProvider: generateChatToken,
@@ -41,16 +38,15 @@ export const ChatUI = ({meetingId, meetingName, userId, userName, userImage}: Pr
         }
     })
 
-    useEffect(() => {
+    // client.channel() is a synchronous factory (returns the same instance per
+    // id), so the channel is derived state — no useState/useEffect needed.
+    const channel = useMemo(() => {
+        if(!client) return undefined;
 
-        if(!client) return;
-
-        const channel = client.channel("messaging", meetingId, {
+        return client.channel("messaging", meetingId, {
             members: [userId]
-        })
-
-        setChannel(channel);
-    }, [client, meetingId, meetingName, userId])
+        });
+    }, [client, meetingId, userId])
 
     if(!client){
         return (
