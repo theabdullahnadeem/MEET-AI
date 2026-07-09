@@ -13,6 +13,7 @@ import {
 import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
 import { livekitAgentDispatch, livekitRoomService } from "@/lib/livekit";
+import { activateMeetingResources } from "@/lib/meeting-activation";
 import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
 import { ParticipantInfo_Kind, TrackType } from "@livekit/protocol";
 import { generateAvatarUri } from "@/lib/avatar";
@@ -504,6 +505,51 @@ export const meetingsRouter = createTRPCRouter({
         status: existingMeeting.status,
         isOwner: existingMeeting.userId === ctx.auth.user.id,
       };
+    }),
+  // Fired from the client the moment the user clicks "Join Meeting", so the
+  // agent is dispatched (and recording started) in parallel with their room
+  // connection — it arrives seconds earlier than waiting for the
+  // participant_joined webhook (which stays as the fallback). The atomic
+  // upcoming→active flip guarantees the side effects run exactly once no
+  // matter how many joiners or paths race.
+  activateMeeting: protectedProcedure
+    .input(z.object({ meetingId: z.string() }))
+    .mutation(async ({ input, ctx }) => {
+      const [meeting] = await db
+        .select({ id: meetings.id, userId: meetings.userId })
+        .from(meetings)
+        .where(
+          and(eq(meetings.id, input.meetingId), canAccessMeeting(ctx.auth.user.id)),
+        );
+
+      // Same authorization as /api/livekit-token: owner or admitted guest.
+      if (!meeting) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not authorized for this meeting",
+        });
+      }
+
+      const [activated] = await db
+        .update(meetings)
+        .set({ status: MeetingStatus.ACTIVE, startedAt: new Date() })
+        .where(
+          and(
+            eq(meetings.id, input.meetingId),
+            eq(meetings.status, MeetingStatus.UPCOMING),
+          ),
+        )
+        .returning({ id: meetings.id });
+
+      if (!activated) {
+        // Already active (or ended) — agent/recording were handled by the
+        // winner of the flip.
+        return { status: "already_active" as const };
+      }
+
+      await activateMeetingResources(input.meetingId);
+
+      return { status: "activated" as const };
     }),
   // MU-3: knock-to-join. A signed-in non-owner asks to join; the host admits
   // or denies from inside the call. Only an `approved` row unlocks

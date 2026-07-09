@@ -215,7 +215,9 @@ export const PeoplePanel = ({
   );
 
   return (
-    <div className="w-72 sm:w-80 shrink-0 rounded-lg bg-[#101213] border border-white/10 flex flex-col overflow-hidden">
+    // Mobile: overlay the whole stage (the tiles keep their size underneath);
+    // sm+: a fixed-width inline sidebar next to the stage.
+    <div className="absolute inset-0 z-20 sm:static sm:z-auto sm:w-80 sm:shrink-0 rounded-lg bg-[#101213] border border-white/10 flex flex-col overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
         <p className="text-sm font-medium">People</p>
         <Button
