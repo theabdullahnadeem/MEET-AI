@@ -112,15 +112,17 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
 
   return (
     <div className="relative flex flex-col gap-4 p-4 h-full overflow-hidden text-white">
-      <div className="shrink-0 bg-[#101213] rounded-full p-4 flex items-center gap-4">
+      {/* Mobile: the bar scrolls horizontally (scrollbar hidden) instead of
+          clipping the buttons — the meeting name truncates first. */}
+      <div className="shrink-0 bg-[#101213] rounded-full p-4 flex items-center gap-4 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <Link
           href="/"
-          className="flex items-center justify-center p-1 bg-white/10 rounded-full w-fit h-fit"
+          className="flex items-center justify-center p-1 bg-white/10 rounded-full w-fit h-fit shrink-0"
         >
           <Image src="/logo.svg" alt="Logo" width={22} height={22} />
         </Link>
-        <h4 className="text-base">{meetingName}</h4>
-        <div className="ml-auto flex items-center gap-x-2">
+        <h4 className="text-base truncate">{meetingName}</h4>
+        <div className="ml-auto flex items-center gap-x-2 shrink-0">
           {/* C.3: mute/unmute the AI (host) + Ask AI while muted (everyone).
               C.2: host can remove/re-add the agent any time. */}
           <AgentControls meetingId={meetingId} isOwner={isOwner} />
@@ -163,7 +165,9 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
           />
         </div>
       </div>
-      <div className="flex-1 min-h-0 flex gap-4">
+      {/* relative: on small screens the side panels overlay this stage area
+          (Google-Meet style) instead of squeezing the video tiles. */}
+      <div className="relative flex-1 min-h-0 flex gap-4">
         {/* C.4: screens take the stage when shared (supports several at once). */}
         <MeetingLayout />
         {panel === "people" && (

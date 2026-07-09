@@ -3,9 +3,11 @@
 import { Loader2Icon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { LiveKitRoom } from "@livekit/components-react";
+import { useMutation } from "@tanstack/react-query";
 
 import "@livekit/components-styles";
 
+import { useTRPC } from "@/trpc/client";
 import { CallLobby, type LobbyChoices } from "./call-lobby";
 import { CallActive } from "./call-active";
 import { CallEnded } from "./call-ended";
@@ -21,8 +23,20 @@ interface Props {
 }
 
 export const CallConnect = ({ meetingId, meetingName, isOwner }: Props) => {
+  const trpc = useTRPC();
   const [token, setToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Fired at the Join click so the agent is dispatched in parallel with the
+  // room connection — it shows up seconds sooner than waiting for the
+  // participant_joined webhook (which remains the fallback if this call
+  // fails; errors are deliberately swallowed).
+  const activateMeeting = useMutation(
+    trpc.meeting.activateMeeting.mutationOptions({
+      onError: (error) =>
+        console.error("activateMeeting failed (webhook will cover):", error),
+    }),
+  );
   // MU-3: 403 from the token endpoint → the guest knocks and waits.
   const [knocking, setKnocking] = useState(false);
   const [show, setShow] = useState<"lobby" | "call" | "ended">("lobby");
@@ -89,6 +103,7 @@ export const CallConnect = ({ meetingId, meetingName, isOwner }: Props) => {
     return (
       <CallLobby
         onJoin={(nextChoices) => {
+          activateMeeting.mutate({ meetingId });
           setChoices(nextChoices);
           setShow("call");
         }}
