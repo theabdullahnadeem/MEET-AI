@@ -1,12 +1,9 @@
-import { eq, count } from "drizzle-orm";
-
-import { db } from "@/db";
-import { meetings, agents } from "@/db/schema";
 import { polarClient } from "@/lib/polar";
 import {
     createTRPCRouter,
     protectedProcedure
 } from "@/trpc/init";
+import { getPlanLimits, getPlanUsage } from "./quotas";
 
 export const premiumRouter = createTRPCRouter({
     getCurrentSubscription: protectedProcedure.query(async ({ctx}) => {
@@ -35,34 +32,26 @@ export const premiumRouter = createTRPCRouter({
 
         return products.result.items;
     }),
+    // S-2: usage vs plan limits, for free AND paid users (the name predates
+    // that — kept so every existing invalidation of this query keeps working).
+    // meetingCount is this calendar month; limits of null mean unlimited.
     getFreeUsage: protectedProcedure.query( async ({ctx}) => {
         const customer = await polarClient.customers.getStateExternal({
             externalId: ctx.auth.user.id
         });
 
-        const subscription = customer.activeSubscriptions[0];
-
-        if(subscription){
-            return null;
-        }
-
-        const [userMeetings] = await db 
-        .select({
-            count: count(meetings.id)
-        })
-        .from(meetings)
-        .where(eq(meetings.userId, ctx.auth.user.id)); 
-
-        const [userAgents] = await db 
-        .select({
-            count: count(agents.id)
-        })
-        .from(agents)
-        .where(eq(agents.userId, ctx.auth.user.id)); 
+        const [limits, usage] = await Promise.all([
+            getPlanLimits(customer),
+            getPlanUsage(ctx.auth.user.id),
+        ]);
 
         return {
-            meetingCount: userMeetings.count,
-            agentCount: userAgents.count
+            planName: limits.planName,
+            isPremium: limits.isPremium,
+            agentCount: usage.agentCount,
+            agentLimit: limits.maxAgents,
+            meetingCount: usage.meetingCount,
+            meetingLimit: limits.maxMeetingsPerMonth,
         }
     })
 })

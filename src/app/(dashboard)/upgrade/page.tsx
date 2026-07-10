@@ -25,6 +25,9 @@ const Page = async () => {
     void queryClient.prefetchQuery(
         trpc.premium.getProducts.queryOptions()
     )
+    void queryClient.prefetchQuery(
+        trpc.premium.getFreeUsage.queryOptions()
+    )
 
     return (
         <HydrationBoundary state={dehydrate(queryClient)}>
