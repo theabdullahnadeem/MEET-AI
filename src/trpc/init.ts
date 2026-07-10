@@ -40,9 +40,17 @@ export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
 // redirect FORBIDDEN to /upgrade.
 export const premiumProcedure = (entity: "meetings" | "agents") =>
   protectedProcedure.use(async ({ ctx, next }) => {
-    const customer = await polarClient.customers.getStateExternal({
-      externalId: ctx.auth.user.id,
-    });
+    let customer;
+    try {
+      customer = await polarClient.customers.getStateExternal({
+        externalId: ctx.auth.user.id,
+      });
+    } catch (err) {
+      // Fail-open: if Polar is unreachable we skip quota checks rather than
+      // block every create in the app (same philosophy as quotas.ts).
+      console.error("[premium] customer state lookup failed:", err);
+      return next({ ctx: { ...ctx, customer: null } });
+    }
 
     const limits = await getPlanLimits(customer);
     const usage = await getPlanUsage(ctx.auth.user.id);
