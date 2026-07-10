@@ -1,13 +1,7 @@
-import { db } from "@/db";
-import { agents, meetings } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { polarClient } from "@/lib/polar";
-import {
-  MAX_FREE_AGENTS,
-  MAX_FREE_MEETINGS,
-} from "@/modules/premium/constants";
+import { getPlanLimits, getPlanUsage } from "@/modules/premium/server/quotas";
 import { TRPCError, initTRPC } from "@trpc/server";
-import { count, eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { cache } from "react";
 export const createTRPCContext = cache(async () => {
@@ -39,46 +33,43 @@ export const protectedProcedure = baseProcedure.use(async ({ ctx, next }) => {
   }
   return next({ ctx: { ...ctx, auth: session } });
 });
+// S-2: quota gate for creates. Free limits come from constants; paid limits
+// come from the subscribed Polar product's metadata (maxAgents,
+// maxMeetingsPerMonth — null/unset = unlimited, i.e. the pre-S-2 behaviour).
+// Meeting quotas are per calendar month for everyone. Clients already
+// redirect FORBIDDEN to /upgrade.
 export const premiumProcedure = (entity: "meetings" | "agents") =>
   protectedProcedure.use(async ({ ctx, next }) => {
     const customer = await polarClient.customers.getStateExternal({
       externalId: ctx.auth.user.id,
     });
 
-    const [userMeetings] = await db
-      .select({
-        count: count(meetings.id),
-      })
-      .from(meetings)
-      .where(eq(meetings.userId, ctx.auth.user.id));
+    const limits = await getPlanLimits(customer);
+    const usage = await getPlanUsage(ctx.auth.user.id);
 
-    const [userAgents] = await db
-      .select({
-        count: count(agents.id),
-      })
-      .from(agents)
-      .where(eq(agents.userId, ctx.auth.user.id));
-
-    const isPremium = customer.activeSubscriptions.length > 0;
-    const isFreeAgentLimitReached = userAgents.count >= MAX_FREE_AGENTS;
-    const isFreeMeetingLimitReached = userMeetings.count >= MAX_FREE_MEETINGS;
-
-    const shouldThrowMeetingError =
-      entity === "meetings" && isFreeMeetingLimitReached && !isPremium;
-    const shouldThrowAgentError =
-      entity === "agents" && isFreeAgentLimitReached && !isPremium;
-
-    if (shouldThrowMeetingError) {
+    if (
+      entity === "meetings" &&
+      limits.maxMeetingsPerMonth !== null &&
+      usage.meetingCount >= limits.maxMeetingsPerMonth
+    ) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: "Free trial limit reached",
+        message: limits.isPremium
+          ? `Your ${limits.planName ?? "current"} plan includes ${limits.maxMeetingsPerMonth} meetings per month — you've used them all. Upgrade for more.`
+          : "Free trial limit reached",
       });
     }
 
-    if (shouldThrowAgentError) {
+    if (
+      entity === "agents" &&
+      limits.maxAgents !== null &&
+      usage.agentCount >= limits.maxAgents
+    ) {
       throw new TRPCError({
         code: "FORBIDDEN",
-        message: "Free trial limit reached",
+        message: limits.isPremium
+          ? `Your ${limits.planName ?? "current"} plan includes ${limits.maxAgents} agents — remove one or upgrade for more.`
+          : "Free trial limit reached",
       });
     }
 
