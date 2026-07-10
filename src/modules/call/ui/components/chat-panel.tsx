@@ -32,8 +32,12 @@ export const ChatPanel = ({ messages, onSend, isSending, onClose }: Props) => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
+  // S-1: keep messages within a sane size (LiveKit data packets are capped
+  // anyway — a huge paste would fail to send or splinter the stream).
+  const MAX_MESSAGE_LENGTH = 2000;
+
   const handleSend = async () => {
-    const message = draft.trim();
+    const message = draft.trim().slice(0, MAX_MESSAGE_LENGTH);
     if (!message || isSending) return;
     setDraft("");
     await onSend(message).catch(() => {
@@ -98,6 +102,7 @@ export const ChatPanel = ({ messages, onSend, isSending, onClose }: Props) => {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Send a message"
+          maxLength={MAX_MESSAGE_LENGTH}
           className="bg-white/5 border-white/10 text-white placeholder:text-white/40"
         />
         <Button

@@ -85,7 +85,8 @@ export const agentRouter = createTRPCRouter({
           .min(MIN_PAGE_SIZE)
           .max(MAX_PAGE_SIZE)
           .default(DEFAULT_PAGE_SIZE),
-        search: z.string().nullish(),
+        // S-1: bounded — search feeds a LIKE pattern, no reason to accept essays.
+        search: z.string().max(200).nullish(),
       }),
     )
     .query(async ({ ctx, input }) => {

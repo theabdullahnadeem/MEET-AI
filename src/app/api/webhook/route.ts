@@ -37,7 +37,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // S-1: reject oversized payloads before buffering them (the header check
+  // fast-rejects; the length check after covers chunked bodies).
+  const MAX_WEBHOOK_BODY_BYTES = 1_000_000;
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
+
   const body = await req.text();
+  if (body.length > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
 
   if (!verifySignatureWithSdk(body, signature)) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
