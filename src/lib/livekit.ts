@@ -32,7 +32,11 @@ export async function createLiveKitToken(
   userImage: string,
   roomName: string,
   options?: { roomAdmin?: boolean },
-  ttlSeconds = 3600,
+  // S-3: 15 minutes (was 1 h). The token is only checked when CONNECTING —
+  // an established session never expires mid-call, and the client re-fetches
+  // a token whenever it (re)joins. The short TTL shrinks the window in which
+  // a kicked guest could reuse a cached token to slip back into the room.
+  ttlSeconds = 900,
 ): Promise<string> {
   const token = new AccessToken(
     process.env.LIVEKIT_API_KEY!,
