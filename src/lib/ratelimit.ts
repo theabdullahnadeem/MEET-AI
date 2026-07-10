@@ -19,7 +19,7 @@ if (!redis && process.env.NODE_ENV === "production") {
   );
 }
 
-type Bucket = "token" | "webhook";
+type Bucket = "token" | "webhook" | "mutation";
 
 const limiters: Record<Bucket, Ratelimit | null> = redis
   ? {
@@ -36,8 +36,15 @@ const limiters: Record<Bucket, Ratelimit | null> = redis
         limiter: Ratelimit.slidingWindow(300, "60 s"),
         prefix: "meetai/rl/webhook",
       }),
+      // S-3: sensitive tRPC mutations (knocks, activation, chat tokens) —
+      // per-user+procedure, far above any legitimate clicking.
+      mutation: new Ratelimit({
+        redis,
+        limiter: Ratelimit.slidingWindow(20, "60 s"),
+        prefix: "meetai/rl/mutation",
+      }),
     }
-  : { token: null, webhook: null };
+  : { token: null, webhook: null, mutation: null };
 
 /**
  * Returns true if the request is allowed, false if it should be rejected (429).
@@ -64,3 +71,66 @@ export function clientIp(req: Request): string {
   if (xff) return xff.split(",")[0]!.trim();
   return req.headers.get("x-real-ip") ?? "unknown";
 }
+
+// ---------------------------------------------------------------------------
+// S-3: distributed storage for better-auth's built-in rate limiter (sign-in /
+// sign-up / 2FA brute-force protection). Its default in-memory store is
+// per-serverless-instance on Vercel — effectively no protection. When Upstash
+// isn't configured this exports undefined and better-auth falls back to the
+// memory store, which is fine for local dev. All operations fail OPEN.
+
+interface AuthRateLimitEntry {
+  key: string;
+  count: number;
+  lastRequest: number;
+}
+
+const AUTH_RL_PREFIX = "meetai/rl/auth";
+
+export const authRateLimitStorage = redis
+  ? {
+      get: async (key: string) => {
+        try {
+          const data = await redis.get<AuthRateLimitEntry>(
+            `${AUTH_RL_PREFIX}/${key}`,
+          );
+          return data ?? null;
+        } catch (err) {
+          console.error("[ratelimit] auth get failed — failing open:", err);
+          return null;
+        }
+      },
+      set: async (key: string, value: AuthRateLimitEntry) => {
+        try {
+          // TTL comfortably above the largest rule window (60 s).
+          await redis.set(`${AUTH_RL_PREFIX}/${key}`, JSON.stringify(value), {
+            ex: 600,
+          });
+        } catch (err) {
+          console.error("[ratelimit] auth set failed — failing open:", err);
+        }
+      },
+      // Atomic counter path (preferred by better-auth when present): INCR +
+      // EXPIRE gives correct counting across concurrent serverless instances.
+      consume: async (key: string, rule: { window: number; max: number }) => {
+        try {
+          const counterKey = `${AUTH_RL_PREFIX}/c/${key}`;
+          const count = await redis.incr(counterKey);
+          if (count === 1) {
+            await redis.expire(counterKey, rule.window);
+          }
+          if (count <= rule.max) {
+            return { allowed: true as const, retryAfter: null };
+          }
+          const ttl = await redis.ttl(counterKey);
+          return {
+            allowed: false as const,
+            retryAfter: ttl > 0 ? ttl : rule.window,
+          };
+        } catch (err) {
+          console.error("[ratelimit] auth consume failed — failing open:", err);
+          return { allowed: true as const, retryAfter: null };
+        }
+      },
+    }
+  : undefined;

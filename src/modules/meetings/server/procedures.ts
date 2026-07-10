@@ -23,6 +23,18 @@ import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
 import { escapeLike } from "@/lib/utils";
+import { rateLimitOk } from "@/lib/ratelimit";
+
+// S-3: per-user cap on abuse-prone mutations (fail-open until Upstash is
+// configured, like every other limiter in the app).
+const assertMutationAllowed = async (procedure: string, userId: string) => {
+  if (!(await rateLimitOk("mutation", `${procedure}:${userId}`))) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many requests — please wait a moment and try again.",
+    });
+  }
+};
 
 // Participant access: a user may READ a meeting they own OR one they were
 // admitted to (approved join request). Write/management procedures must keep
@@ -69,6 +81,7 @@ export const meetingsRouter = createTRPCRouter({
       return canceledMeeting;
     }),
   generateChatToken: protectedProcedure.mutation(async ({ctx}) => {
+    await assertMutationAllowed("generateChatToken", ctx.auth.user.id);
     const token = streamChat.createToken(ctx.auth.user.id)
     await streamChat.upsertUser({
       id: ctx.auth.user.id,
@@ -515,6 +528,8 @@ export const meetingsRouter = createTRPCRouter({
   activateMeeting: protectedProcedure
     .input(z.object({ meetingId: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      await assertMutationAllowed("activateMeeting", ctx.auth.user.id);
+
       const [meeting] = await db
         .select({ id: meetings.id, userId: meetings.userId })
         .from(meetings)
@@ -557,6 +572,8 @@ export const meetingsRouter = createTRPCRouter({
   requestToJoin: protectedProcedure
     .input(z.object({ meetingId: z.string() }))
     .mutation(async ({ input, ctx }) => {
+      await assertMutationAllowed("requestToJoin", ctx.auth.user.id);
+
       const [meeting] = await db
         .select({ id: meetings.id, userId: meetings.userId })
         .from(meetings)
