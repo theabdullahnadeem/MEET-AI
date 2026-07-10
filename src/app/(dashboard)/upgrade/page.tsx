@@ -19,15 +19,21 @@ const Page = async () => {
     }
 
     const queryClient = getQueryClient();
-    void queryClient.prefetchQuery(
-        trpc.premium.getCurrentSubscription.queryOptions()
-    )
-    void queryClient.prefetchQuery(
-        trpc.premium.getProducts.queryOptions()
-    )
-    void queryClient.prefetchQuery(
-        trpc.premium.getFreeUsage.queryOptions()
-    )
+    // AWAITED (not void): dehydrate settled data instead of streaming pending
+    // promises. If a streamed promise rejects, useSuspenseQuery retries during
+    // SSR through the cookie-less HTTP link → 401 → React #419 fallback. With
+    // settled data the suspense render reads straight from the cache.
+    await Promise.all([
+        queryClient.prefetchQuery(
+            trpc.premium.getCurrentSubscription.queryOptions()
+        ),
+        queryClient.prefetchQuery(
+            trpc.premium.getProducts.queryOptions()
+        ),
+        queryClient.prefetchQuery(
+            trpc.premium.getFreeUsage.queryOptions()
+        ),
+    ])
 
     return (
         <HydrationBoundary state={dehydrate(queryClient)}>
