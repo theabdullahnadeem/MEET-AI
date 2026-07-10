@@ -777,8 +777,9 @@ export const meetingsRouter = createTRPCRouter({
           .min(MIN_PAGE_SIZE)
           .max(MAX_PAGE_SIZE)
           .default(DEFAULT_PAGE_SIZE),
-        search: z.string().nullish(),
-        agentId: z.string().nullish(),
+        // S-1: bounded — search feeds a LIKE pattern, no reason to accept essays.
+        search: z.string().max(200).nullish(),
+        agentId: z.string().max(64).nullish(),
         status:z.enum([
           MeetingStatus.UPCOMING,
           MeetingStatus.ACTIVE,

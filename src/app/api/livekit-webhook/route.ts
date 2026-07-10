@@ -16,6 +16,9 @@ const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_SECRET!,
 );
 
+// S-1: real LiveKit webhook events are a few KB — anything bigger is abuse.
+const MAX_WEBHOOK_BODY_BYTES = 1_000_000;
+
 // The LiveKit room is named after the meeting id (see meeting.create).
 export async function POST(req: NextRequest) {
   // SEC-4 / F-04: rate-limit per IP (no-op until Upstash is configured).
@@ -23,7 +26,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
+  // S-1: reject oversized payloads before buffering them (the header check
+  // fast-rejects; the length check after covers chunked bodies).
+  const contentLength = Number(req.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
+
   const body = await req.text();
+  if (body.length > MAX_WEBHOOK_BODY_BYTES) {
+    return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  }
   const authHeader = req.headers.get("Authorization");
 
   if (!authHeader) {

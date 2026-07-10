@@ -44,7 +44,10 @@ export const UpgradeView = () => {
                         </p>
                     )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1 column on phones, 2 on tablets/small laptops (the third
+                    card wraps below), 3 across from xl — width-capped so the
+                    cards never stretch into unreadable slabs on wide screens. */}
+                <div className="grid w-full max-w-5xl grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {products.map((product) => {
                         const isCurrentProduct = currentSubscription?.id === product.id;
                         const isPremium = !!currentSubscription;
