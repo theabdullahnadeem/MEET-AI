@@ -58,19 +58,24 @@ export function r2KeyFromStored(stored: string): string {
  */
 export async function deleteR2Objects(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
-  try {
-    await r2Client.send(
-      new DeleteObjectsCommand({
-        Bucket: process.env.R2_BUCKET,
-        Delete: {
-          Objects: keys.map((key) => ({ Key: key })),
-          Quiet: true,
-        },
-      }),
-    );
-    console.log(`[r2] Purged ${keys.length} object(s): ${keys.join(", ")}`);
-  } catch (err) {
-    console.error(`[r2] Failed to purge objects (${keys.join(", ")}):`, err);
+  // DeleteObjects accepts at most 1000 keys per call — chunk so account-level
+  // purges (S-5: every meeting a user ever had) stay within the limit.
+  for (let i = 0; i < keys.length; i += 1000) {
+    const chunk = keys.slice(i, i + 1000);
+    try {
+      await r2Client.send(
+        new DeleteObjectsCommand({
+          Bucket: process.env.R2_BUCKET,
+          Delete: {
+            Objects: chunk.map((key) => ({ Key: key })),
+            Quiet: true,
+          },
+        }),
+      );
+      console.log(`[r2] Purged ${chunk.length} object(s): ${chunk.join(", ")}`);
+    } catch (err) {
+      console.error(`[r2] Failed to purge objects (${chunk.join(", ")}):`, err);
+    }
   }
 }
 
