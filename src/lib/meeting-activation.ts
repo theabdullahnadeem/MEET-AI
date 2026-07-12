@@ -1,8 +1,15 @@
 import "server-only";
 
 import { EncodedFileOutput, S3Upload } from "livekit-server-sdk";
+import { eq } from "drizzle-orm";
 
-import { livekitAgentDispatch, livekitEgressClient } from "@/lib/livekit";
+import { db } from "@/db";
+import { agents, meetings } from "@/db/schema";
+import {
+  livekitAgentDispatch,
+  livekitEgressClient,
+  livekitRoomService,
+} from "@/lib/livekit";
 import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
 
 // First-human-join side effects (agent dispatch + recording), shared by the
@@ -62,8 +69,71 @@ export async function dispatchAgentToRoom(roomName: string) {
   }
 }
 
+/**
+ * (Re)assert the LiveKit room with fresh metadata from the DB.
+ *
+ * The room is first created at meeting.create with the agent's persona in its
+ * metadata — but with a 5-minute emptyTimeout. If nobody joins in time,
+ * LiveKit closes the empty room, and a later join auto-creates a bare room
+ * with NO metadata; the agent worker then reads empty metadata from the
+ * dispatch job and exits ("Missing meetingId or agentId") — the AI silently
+ * never joins any meeting entered >5 min after creation. There is also a race
+ * where the connecting participant re-creates the room before this server
+ * path runs. Both are fixed by ensuring the room exists AND carries current
+ * metadata before every agent dispatch. Side effect: instruction edits made
+ * after meeting creation now reach the next agent session.
+ */
+export async function ensureRoomReady(roomName: string) {
+  try {
+    const [meeting] = await db
+      .select({
+        meetingName: meetings.name,
+        hostUserId: meetings.userId,
+        agentId: agents.id,
+        agentName: agents.name,
+        agentInstructions: agents.instructions,
+      })
+      .from(meetings)
+      .innerJoin(agents, eq(meetings.agentId, agents.id))
+      .where(eq(meetings.id, roomName));
+
+    if (!meeting) return; // meeting deleted meanwhile — nothing to assert
+
+    // Same shape meeting.create writes and the agent worker (RoomMeta) reads.
+    const metadata = JSON.stringify({
+      meetingId: roomName,
+      meetingName: meeting.meetingName,
+      hostUserId: meeting.hostUserId,
+      agentId: meeting.agentId,
+      agentName: meeting.agentName,
+      agentInstructions: meeting.agentInstructions,
+    });
+
+    // createRoom is idempotent: it returns the existing room (metadata
+    // untouched) when one is already live — so patch metadata explicitly in
+    // that case (covers the auto-created-bare-room race).
+    const room = await livekitRoomService.createRoom({
+      name: roomName,
+      emptyTimeout: 300,
+      maxParticipants: 50,
+      metadata,
+    });
+
+    if (room.metadata !== metadata) {
+      await livekitRoomService.updateRoomMetadata(roomName, metadata);
+    }
+  } catch (err) {
+    // Non-fatal — dispatch still proceeds; worst case is the pre-fix
+    // behaviour for this one meeting.
+    console.error("[meeting-activation] Failed to ensure room metadata:", err);
+  }
+}
+
 // K.2: dispatch and recording run CONCURRENTLY — the agent's arrival
 // shouldn't wait for egress spin-up. Each branch is non-fatal on its own.
 export async function activateMeetingResources(roomName: string) {
+  // Must complete BEFORE dispatch: the worker reads the room metadata
+  // snapshotted into the dispatch job.
+  await ensureRoomReady(roomName);
   await Promise.all([dispatchAgentToRoom(roomName), startRoomRecording(roomName)]);
 }
