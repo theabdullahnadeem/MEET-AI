@@ -6,6 +6,7 @@ import * as schema from "@/db/schema";
 import {polar, checkout, portal} from "@polar-sh/better-auth"
 import { polarClient } from "./polar";
 import { authRateLimitStorage } from "./ratelimit";
+import { purgeUserData } from "./account-deletion";
 
 if (!process.env.BETTER_AUTH_SECRET) {
     throw new Error("BETTER_AUTH_SECRET is not set");
@@ -51,6 +52,19 @@ export const auth = betterAuth({
      },
     emailAndPassword:{
         enabled: true,
+    },
+    // S-5: right-to-erasure. Email+password users confirm with their
+    // password; social-login users need a fresh session (better-auth's
+    // freshness check — sign in again if it errors). The DB rows cascade
+    // from the user row; beforeDelete purges what the DB can't reach
+    // (R2 media, Stream chat, live rooms, Polar subscription).
+    user: {
+        deleteUser: {
+            enabled: true,
+            beforeDelete: async (user) => {
+                await purgeUserData(user.id);
+            },
+        },
     },
     database: drizzleAdapter(db, {
         provider: "pg", 

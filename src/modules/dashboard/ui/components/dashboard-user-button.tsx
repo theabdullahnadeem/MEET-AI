@@ -1,11 +1,12 @@
 import { authClient } from "@/lib/auth-client";
 import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { GeneratedAvatar } from "@/components/generated-avatar";
-import { ChevronDownIcon, CreditCardIcon, LogOutIcon, ShieldCheckIcon } from "lucide-react";
+import { ChevronDownIcon, CreditCardIcon, LogOutIcon, ShieldCheckIcon, TrashIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { TwoFactorDialog } from "@/modules/auth/ui/components/two-factor-dialog";
+import { DeleteAccountDialog } from "@/modules/auth/ui/components/delete-account-dialog";
 
 import {
   DropdownMenu,
@@ -33,6 +34,8 @@ export const DashboardUserButton = () => {
   const { data, isPending } = authClient.useSession();
   // C.7: security settings (two-factor authentication).
   const [securityOpen, setSecurityOpen] = useState(false);
+  // S-5: permanent account deletion.
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const onLogout = () => {
     authClient.signOut({
@@ -52,6 +55,7 @@ export const DashboardUserButton = () => {
     return (
       <>
       <TwoFactorDialog open={securityOpen} onOpenChange={setSecurityOpen} />
+      <DeleteAccountDialog open={deleteOpen} onOpenChange={setDeleteOpen} />
       <Drawer>
         <DrawerTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
           {data.user.image ? (
@@ -86,6 +90,7 @@ export const DashboardUserButton = () => {
                 <Button variant={"outline"} className="w-full" onClick={()=> authClient.customer.portal()}> <CreditCardIcon className="size-4 text-black" />Billing</Button>
                 <Button variant={"outline"} className="w-full" onClick={()=> setSecurityOpen(true)}> <ShieldCheckIcon className="size-4 text-black" />Security</Button>
                 <Button variant={"outline"} className="w-full" onClick={onLogout}> <LogOutIcon className="size-4 text-black" />Logout</Button>
+                <Button variant={"outline"} className="w-full text-destructive hover:text-destructive" onClick={()=> setDeleteOpen(true)}> <TrashIcon className="size-4" />Delete account</Button>
             </DrawerFooter>
         </DrawerContent>
       </Drawer>
@@ -96,6 +101,7 @@ export const DashboardUserButton = () => {
   return (
     <>
     <TwoFactorDialog open={securityOpen} onOpenChange={setSecurityOpen} />
+    <DeleteAccountDialog open={deleteOpen} onOpenChange={setDeleteOpen} />
     <DropdownMenu>
       <DropdownMenuTrigger className="rounded-lg border border-border/10 p-3 w-full flex items-center justify-between bg-white/5 hover:bg-white/10 overflow-hidden gap-x-2">
         {data.user.image ? (
@@ -144,6 +150,14 @@ export const DashboardUserButton = () => {
         >
           Logout
           <LogOutIcon className="size-4" />
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => setDeleteOpen(true)}
+          className="cursor-pointer flex items-center justify-between text-destructive focus:text-destructive"
+        >
+          Delete account
+          <TrashIcon className="size-4" />
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
