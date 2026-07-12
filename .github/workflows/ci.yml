@@ -1,0 +1,71 @@
+# S-7: CI gate for every PR — types, lint, tests, build, dependency audit,
+# and secret scanning. Same checks the repo has always run manually per PR,
+# now enforced.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install (runs patch-package via postinstall)
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        # Dummy env — several modules assert env vars at import time. The
+        # build never talks to real services (page data collection is
+        # guarded / fails soft everywhere).
+        env:
+          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
+          BETTER_AUTH_SECRET: dummy-secret-for-ci-builds-only
+          LIVEKIT_API_KEY: dummykey
+          LIVEKIT_API_SECRET: dummysecret
+          LIVEKIT_URL: wss://dummy.livekit.cloud
+          NEXT_PUBLIC_LIVEKIT_URL: wss://dummy.livekit.cloud
+          R2_ENDPOINT: https://dummy.r2.cloudflarestorage.com
+          R2_ACCESS_KEY_ID: dummy
+          R2_SECRET_ACCESS_KEY: dummy
+          R2_BUCKET: dummy
+          NEXT_PUBLIC_STREAM_CHAT_API_KEY: dummy
+          STREAM_CHAT_SECRET: dummy
+          OPENAI_API_KEY: sk-dummy
+          POLAR_ACCESS_TOKEN: dummy
+          NEXT_PUBLIC_STREAM_API_KEY: dummy
+          STREAM_VIDEO_SECRET: dummysecretdummysecretdummysecret
+        run: npm run build
+
+      - name: Dependency audit (fail on high/critical)
+        run: npm audit --omit=dev --audit-level=high
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so leaked-then-deleted secrets are still caught.
+          fetch-depth: 0
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
