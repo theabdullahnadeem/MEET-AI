@@ -98,6 +98,11 @@ export const CallKnock = ({ meetingId, onApproved }: Props) => {
         <p className="text-sm text-muted-foreground max-w-sm">
           You&apos;ll join the meeting as soon as the host lets you in.
         </p>
+        {/* S-4: recording consent — guests see this before they ever connect. */}
+        <p className="text-xs text-muted-foreground max-w-sm">
+          This meeting is recorded and transcribed, and an AI assistant may
+          listen and speak. By joining, you consent to this.
+        </p>
       </div>
     </div>
   );

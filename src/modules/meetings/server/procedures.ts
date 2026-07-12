@@ -18,7 +18,7 @@ import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
 import { ParticipantInfo_Kind, TrackType } from "@livekit/protocol";
 import { generateAvatarUri } from "@/lib/avatar";
 import { fetchTranscriptText } from "@/lib/fetch-transcript";
-import { presignR2Get, r2KeyFromStored } from "@/lib/r2";
+import { deleteR2Objects, presignR2Get, r2KeyFromStored } from "@/lib/r2";
 import JSONL from "jsonl-parse-stringify";
 import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
@@ -197,6 +197,25 @@ export const meetingsRouter = createTRPCRouter({
         message: "Meeting not found",
       });
     }
+
+    // S-4: deleting a meeting must delete its media too — the recording is a
+    // video of people and the transcript is everything they said. Purge every
+    // key this meeting could have produced (deterministic paths + whatever
+    // the row stored, which may be a legacy URL form); nonexistent keys are
+    // no-ops and purge failures never block the deletion (logged inside).
+    const mediaKeys = new Set<string>([
+      `recordings/${removedMeeting.id}.mp4`,
+      `transcripts/${removedMeeting.id}.jsonl`,
+      // C.5 writes the translated transcript alongside the original.
+      `transcripts/${removedMeeting.id}.en.jsonl`,
+    ]);
+    if (removedMeeting.recordingUrl) {
+      mediaKeys.add(r2KeyFromStored(removedMeeting.recordingUrl));
+    }
+    if (removedMeeting.transcriptUrl) {
+      mediaKeys.add(r2KeyFromStored(removedMeeting.transcriptUrl));
+    }
+    await deleteR2Objects([...mediaKeys]);
 
     return removedMeeting;
   }),
