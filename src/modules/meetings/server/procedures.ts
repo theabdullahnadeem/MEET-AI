@@ -13,7 +13,7 @@ import {
 import { meetingsInsertSchema, meetingsUpdateSchema } from "../schema";
 import { MeetingStatus } from "@/constants";      
 import { livekitAgentDispatch, livekitRoomService } from "@/lib/livekit";
-import { activateMeetingResources } from "@/lib/meeting-activation";
+import { activateMeetingResources, ensureRoomReady } from "@/lib/meeting-activation";
 import { MEETING_AGENT_NAME } from "@/modules/call/agent-protocol";
 import { ParticipantInfo_Kind, TrackType } from "@livekit/protocol";
 import { generateAvatarUri } from "@/lib/avatar";
@@ -496,6 +496,10 @@ export const meetingsRouter = createTRPCRouter({
       if (hasAgent) {
         return { status: "already_present" as const };
       }
+
+      // The live room may be an auto-created one without metadata (see
+      // ensureRoomReady) — re-assert it or the dispatched agent exits.
+      await ensureRoomReady(input.meetingId);
 
       await livekitAgentDispatch.createDispatch(
         input.meetingId,
