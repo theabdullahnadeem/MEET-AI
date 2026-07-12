@@ -108,6 +108,12 @@ export const CallLobby = ({ onJoin }: Props) => {
               {videoEnabled ? <VideoIcon /> : <VideoOffIcon />}
             </Button>
           </div>
+          {/* S-4: recording consent — participants must know before joining
+              (two-party consent laws + GDPR transparency). */}
+          <p className="text-xs text-muted-foreground text-center max-w-64">
+            This meeting is recorded and transcribed, and an AI assistant may
+            listen and speak. By joining, you consent to this.
+          </p>
           <div className="flex gap-x-2 justify-between w-full">
             <Button asChild variant="ghost">
               <Link href="/meetings">Cancel</Link>

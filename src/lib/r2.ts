@@ -1,6 +1,10 @@
 import "server-only";
 
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // SEC-5 / F-03: private media storage. The bucket no longer needs a public
@@ -45,6 +49,31 @@ export function r2KeyFromStored(stored: string): string {
  * Pass `downloadAs` to serve the object as a file download (C.6 exports) —
  * R2 then sends a Content-Disposition: attachment header with that filename.
  */
+/**
+ * S-4: best-effort batch delete. Deleting a key that doesn't exist is a no-op
+ * in S3/R2 semantics, so callers can pass every key a meeting COULD have
+ * produced without checking first. Failures are logged, never thrown — a
+ * storage hiccup must not block the deletion the user asked for (the orphaned
+ * object is logged for manual/retry cleanup).
+ */
+export async function deleteR2Objects(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  try {
+    await r2Client.send(
+      new DeleteObjectsCommand({
+        Bucket: process.env.R2_BUCKET,
+        Delete: {
+          Objects: keys.map((key) => ({ Key: key })),
+          Quiet: true,
+        },
+      }),
+    );
+    console.log(`[r2] Purged ${keys.length} object(s): ${keys.join(", ")}`);
+  } catch (err) {
+    console.error(`[r2] Failed to purge objects (${keys.join(", ")}):`, err);
+  }
+}
+
 export async function presignR2Get(
   key: string,
   expiresInSeconds = 600,
