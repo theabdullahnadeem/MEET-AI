@@ -138,6 +138,31 @@ export const webhookEvents = pgTable("webhook_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// S-6: append-only audit trail of security-relevant actions (sign-ins, host
+// controls, deletions). Append-only by construction: the app exposes no
+// update/delete path for this table. Deliberately NO foreign keys — an audit
+// entry must survive the deletion of the user/meeting it describes.
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey().$default(() => nanoid()),
+    /** User id of who performed the action. */
+    actorId: text("actor_id").notNull(),
+    /** Namespaced action, e.g. "meeting.kick", "auth.sign_in". */
+    action: text("action").notNull(),
+    /** What it was done to: a user id, participant identity, or request id. */
+    targetId: text("target_id"),
+    meetingId: text("meeting_id"),
+    /** JSON string with action-specific extras (ip, names, …). */
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_log_actor_idx").on(table.actorId),
+    index("audit_log_meeting_idx").on(table.meetingId),
+  ],
+);
+
 export const joinRequestStatus = pgEnum("join_request_status",
   [
     "pending",

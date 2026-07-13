@@ -7,6 +7,7 @@ import {polar, checkout, portal} from "@polar-sh/better-auth"
 import { polarClient } from "./polar";
 import { authRateLimitStorage } from "./ratelimit";
 import { purgeUserData } from "./account-deletion";
+import { audit } from "./audit";
 
 if (!process.env.BETTER_AUTH_SECRET) {
     throw new Error("BETTER_AUTH_SECRET is not set");
@@ -63,6 +64,29 @@ export const auth = betterAuth({
             enabled: true,
             beforeDelete: async (user) => {
                 await purgeUserData(user.id);
+            },
+            afterDelete: async (user) => {
+                // S-6: erasure itself is a security-relevant event. The row
+                // references the (now former) user id only — no PII payload.
+                await audit({ actorId: user.id, action: "account.deleted" });
+            },
+        },
+    },
+    // S-6: every new session = a sign-in (password, OAuth, and post-2FA all
+    // land here). IP/user-agent go into metadata for incident forensics.
+    databaseHooks: {
+        session: {
+            create: {
+                after: async (session) => {
+                    await audit({
+                        actorId: session.userId,
+                        action: "auth.sign_in",
+                        metadata: {
+                            ip: session.ipAddress,
+                            userAgent: session.userAgent,
+                        },
+                    });
+                },
             },
         },
     },

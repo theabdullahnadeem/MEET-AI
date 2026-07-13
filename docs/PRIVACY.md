@@ -18,6 +18,7 @@ from it (and reviewed by a lawyer before launch).
 | Post‑meeting "Ask AI" chat | Stream Chat | User opens the chat |
 | Billing (invoices, tax records) | Polar (merchant of record) | User subscribes |
 | Voice audio during a call | OpenAI Realtime API — **not retained by us**; processed live | During the call |
+| Audit log (sign‑ins incl. IP/user‑agent, host actions, deletions) | Neon Postgres | As events occur (S‑6) |
 
 Consent: every participant sees "This meeting is recorded and transcribed, and
 an AI assistant may listen and speak" **before** joining (lobby and guest
@@ -65,6 +66,9 @@ meetings, join requests, sessions, OAuth accounts, 2FA secrets.
 
 **What survives account deletion (by design):**
 - Polar invoices/tax records (legal obligation, held by Polar).
+- **Audit-log entries** (S‑6) — security logs are retained under legitimate
+  interest (GDPR Art. 17(3)); they reference the former user id and contain no
+  profile data. A time-bounded purge (e.g. 90 days) is planned for v1.1.
 - Media inside other users' meetings the person appeared in as a **guest** —
   those meetings belong to their hosts. (Public privacy policy should state
   this; a guest can ask the host to delete a meeting.)
