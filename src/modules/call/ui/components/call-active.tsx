@@ -133,11 +133,17 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
             className={headerButtonClass}
             onClick={() => togglePanel("people")}
             title="People"
+            aria-label={`People — ${humanCount} in the meeting${
+              pendingCount > 0 ? `, ${pendingCount} waiting to join` : ""
+            }`}
           >
             <UsersIcon />
             {humanCount}
             {pendingCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-amber-500 text-black text-xs font-medium">
+              <span
+                aria-hidden="true"
+                className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-amber-500 text-black text-xs font-medium"
+              >
                 {pendingCount}
               </span>
             )}
@@ -149,10 +155,18 @@ export const CallActive = ({ meetingName, meetingId, isOwner }: Props) => {
             className={headerButtonClass}
             onClick={() => togglePanel("chat")}
             title="In-call messages"
+            aria-label={
+              unreadCount > 0
+                ? `In-call messages — ${unreadCount} unread`
+                : "In-call messages"
+            }
           >
             <MessageSquareTextIcon />
             {unreadCount > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-xs font-medium">
+              <span
+                aria-hidden="true"
+                className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-xs font-medium"
+              >
                 {unreadCount}
               </span>
             )}

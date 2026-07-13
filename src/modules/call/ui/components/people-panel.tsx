@@ -124,6 +124,11 @@ const ParticipantRow = ({
               title={
                 micMuted ? "Microphone is off" : "Mute for everyone"
               }
+              aria-label={
+                micMuted
+                  ? `${participant.name || "Participant"}'s microphone is off`
+                  : `Mute ${participant.name || "participant"} for everyone`
+              }
             >
               {micMuted ? (
                 <MicOffIcon className="size-4" />
@@ -138,6 +143,7 @@ const ParticipantRow = ({
               onClick={handleKick}
               disabled={kick.isPending}
               title="Remove from the meeting"
+              aria-label={`Remove ${participant.name || "participant"} from the meeting`}
             >
               <UserXIcon className="size-4" />
             </Button>
@@ -145,7 +151,9 @@ const ParticipantRow = ({
         ) : (
           <span
             className="text-white/50"
+            role="img"
             title={micMuted ? "Microphone off" : "Microphone on"}
+            aria-label={micMuted ? "Microphone off" : "Microphone on"}
           >
             {micMuted ? (
               <MicOffIcon className="size-4" />
@@ -226,6 +234,7 @@ export const PeoplePanel = ({
           className={rowButtonClass}
           onClick={onClose}
           title="Close"
+          aria-label="Close people panel"
         >
           <XIcon className="size-4" />
         </Button>
