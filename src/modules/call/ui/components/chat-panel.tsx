@@ -58,6 +58,7 @@ export const ChatPanel = ({ messages, onSend, isSending, onClose }: Props) => {
           className="size-7 p-0 text-white/70 hover:text-white hover:bg-white/10"
           onClick={onClose}
           title="Close"
+          aria-label="Close chat panel"
         >
           <XIcon className="size-4" />
         </Button>
@@ -66,7 +67,12 @@ export const ChatPanel = ({ messages, onSend, isSending, onClose }: Props) => {
         Messages can only be seen by people in the call and are deleted when
         the call ends.
       </p>
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-y-3">
+      {/* role=log + aria-live: screen readers announce incoming messages. */}
+      <div
+        role="log"
+        aria-live="polite"
+        className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-y-3"
+      >
         {messages.length === 0 && (
           <p className="text-sm text-white/50 text-center my-auto">
             No messages yet
@@ -112,6 +118,7 @@ export const ChatPanel = ({ messages, onSend, isSending, onClose }: Props) => {
           className="size-9 p-0 text-white/70 hover:text-white hover:bg-white/10 shrink-0"
           disabled={!draft.trim() || isSending}
           title="Send"
+          aria-label="Send message"
         >
           <SendHorizonalIcon className="size-4" />
         </Button>
