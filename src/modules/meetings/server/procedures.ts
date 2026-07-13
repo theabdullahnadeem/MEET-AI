@@ -24,6 +24,7 @@ import { StreamTrancriptItem } from "../types";
 import { streamChat } from "@/lib/stream-chat";
 import { escapeLike } from "@/lib/utils";
 import { rateLimitOk } from "@/lib/ratelimit";
+import { audit } from "@/lib/audit";
 
 // S-3: per-user cap on abuse-prone mutations (fail-open until Upstash is
 // configured, like every other limiter in the app).
@@ -217,6 +218,13 @@ export const meetingsRouter = createTRPCRouter({
     }
     await deleteR2Objects([...mediaKeys]);
 
+    await audit({
+      actorId: ctx.auth.user.id,
+      action: "meeting.deleted",
+      meetingId: removedMeeting.id,
+      metadata: { name: removedMeeting.name },
+    });
+
     return removedMeeting;
   }),
   update: protectedProcedure
@@ -352,6 +360,13 @@ export const meetingsRouter = createTRPCRouter({
           ),
         );
 
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.kick",
+        targetId: input.participantIdentity,
+        meetingId: input.meetingId,
+      });
+
       return { status: "kicked" as const };
     }),
   // MU-4: host-only — mute a participant's microphone for everyone.
@@ -409,6 +424,13 @@ export const meetingsRouter = createTRPCRouter({
         true,
       );
 
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.mute",
+        targetId: input.participantIdentity,
+        meetingId: input.meetingId,
+      });
+
       return { status: "muted" as const };
     }),
   // C.2: host-only — remove the agent from the live meeting. Its session
@@ -454,6 +476,12 @@ export const meetingsRouter = createTRPCRouter({
         input.meetingId,
         agentParticipant.identity,
       );
+
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.agent_removed",
+        meetingId: input.meetingId,
+      });
 
       return { status: "removed" as const };
     }),
@@ -505,6 +533,12 @@ export const meetingsRouter = createTRPCRouter({
         input.meetingId,
         MEETING_AGENT_NAME,
       );
+
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.agent_added",
+        meetingId: input.meetingId,
+      });
 
       return { status: "dispatched" as const };
     }),
@@ -747,6 +781,13 @@ export const meetingsRouter = createTRPCRouter({
         });
       }
 
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.admit",
+        targetId: updated.userId,
+        meetingId: updated.meetingId,
+      });
+
       return updated;
     }),
   deny: protectedProcedure
@@ -776,6 +817,13 @@ export const meetingsRouter = createTRPCRouter({
           message: "Join request not found",
         });
       }
+
+      await audit({
+        actorId: ctx.auth.user.id,
+        action: "meeting.deny",
+        targetId: updated.userId,
+        meetingId: updated.meetingId,
+      });
 
       return updated;
     }),
