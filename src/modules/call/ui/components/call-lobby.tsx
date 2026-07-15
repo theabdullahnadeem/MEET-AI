@@ -14,6 +14,7 @@ import { LocalVideoTrack, Track } from "livekit-client";
 
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
+import { RecordingConsentNotice } from "@/components/recording-consent-notice";
 import { generateAvatarUri } from "@/lib/avatar";
 
 export interface LobbyChoices {
@@ -110,10 +111,7 @@ export const CallLobby = ({ onJoin }: Props) => {
           </div>
           {/* S-4: recording consent — participants must know before joining
               (two-party consent laws + GDPR transparency). */}
-          <p className="text-xs text-muted-foreground text-center max-w-64">
-            This meeting is recorded and transcribed, and an AI assistant may
-            listen and speak. By joining, you consent to this.
-          </p>
+          <RecordingConsentNotice className="text-center max-w-64" />
           <div className="flex gap-x-2 justify-between w-full">
             <Button asChild variant="ghost">
               <Link href="/meetings">Cancel</Link>
