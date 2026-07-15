@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 
 import { useTRPC } from "@/trpc/client";
 import { Button } from "@/components/ui/button";
+import { RecordingConsentNotice } from "@/components/recording-consent-notice";
 
 interface Props {
   meetingId: string;
@@ -99,10 +100,7 @@ export const CallKnock = ({ meetingId, onApproved }: Props) => {
           You&apos;ll join the meeting as soon as the host lets you in.
         </p>
         {/* S-4: recording consent — guests see this before they ever connect. */}
-        <p className="text-xs text-muted-foreground max-w-sm">
-          This meeting is recorded and transcribed, and an AI assistant may
-          listen and speak. By joining, you consent to this.
-        </p>
+        <RecordingConsentNotice className="max-w-sm" />
       </div>
     </div>
   );
